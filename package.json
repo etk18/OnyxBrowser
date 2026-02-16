@@ -1,0 +1,81 @@
+{
+  "name": "onyx-browser",
+  "version": "1.0.0",
+  "description": "The High-Performance Agentic Browser.",
+  "main": "electron/main.js",
+  "scripts": {
+    "dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && ELECTRON_RUN_AS_NODE= electron .\"",
+    "build": "vite build",
+    "postinstall": "electron-builder install-app-deps && chmod +x node_modules/app-builder-bin/mac/app-builder_arm64",
+    "build:win": "electron-builder --win --x64",
+    "build:mac": "npm run build && electron-builder --mac --arm64",
+    "dist": "npm run build:mac && npm run build:win",
+    "preview": "vite preview"
+  },
+  "author": "Onyx Team",
+  "build": {
+    "appId": "com.onyx.browser.v2",
+    "productName": "Onyx Browser",
+    "executableName": "OnyxBrowser",
+    "directories": {
+      "output": "release",
+      "buildResources": "assets"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "extensions/**/*",
+      "package.json"
+    ],
+    "mac": {
+      "target": {
+        "target": "dmg",
+        "arch": [
+          "arm64"
+        ]
+      },
+      "icon": "assets/icon.icns",
+      "artifactName": "OnyxBrowser-Mac-M1.dmg",
+      "category": "public.app-category.productivity"
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.ico",
+      "artifactName": "${productName}-Setup-${version}.${ext}",
+      "legalTrademarks": "Onyx AI",
+      "npmRebuild": true
+    },
+    "dmg": {
+      "title": "Install Onyx Browser",
+      "icon": "assets/icon.icns"
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "icon": "assets/icon.png",
+      "category": "Network"
+    }
+  },
+  "dependencies": {
+    "@cliqz/adblocker-electron": "^1.34.0",
+    "@google/generative-ai": "^0.24.1",
+    "@web3modal/ethers": "^4.2.2",
+    "cross-fetch": "^4.1.0",
+    "dayjs": "^1.11.19",
+    "electron-context-menu": "^4.1.1",
+    "electron-store": "^11.0.2",
+    "ethers": "^6.16.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-markdown": "^10.1.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.2.1",
+    "concurrently": "^8.2.2",
+    "electron": "^40.4.1",
+    "electron-builder": "^26.7.0",
+    "vite": "^7.3.1",
+    "wait-on": "^7.2.0"
+  }
+}

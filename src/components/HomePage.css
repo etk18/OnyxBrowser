@@ -1,0 +1,282 @@
+/* ═══════════════════════════════════════════════════════════
+   Onyx Start Page — Cyberpunk Minimalist
+   ═══════════════════════════════════════════════════════════ */
+
+.homepage {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    background: #0f0f0f;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+/* ── Ambient Glow Effects ── */
+.homepage-glow {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(120px);
+    opacity: 0.15;
+    pointer-events: none;
+    animation: glowDrift 12s ease-in-out infinite alternate;
+}
+
+.homepage-glow-1 {
+    width: 500px;
+    height: 500px;
+    background: #00f2ea;
+    top: -15%;
+    left: -10%;
+}
+
+.homepage-glow-2 {
+    width: 400px;
+    height: 400px;
+    background: #8b5cf6;
+    bottom: -10%;
+    right: -10%;
+    animation-delay: -6s;
+}
+
+@keyframes glowDrift {
+    0% {
+        transform: translate(0, 0) scale(1);
+    }
+
+    100% {
+        transform: translate(40px, 30px) scale(1.15);
+    }
+}
+
+/* ── Content Container ── */
+.homepage-content {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 8px;
+    max-width: 640px;
+    width: 100%;
+    padding: 0 24px;
+    margin-top: -40px;
+}
+
+/* ── Brand Title ── */
+.homepage-brand {
+    font-size: 72px;
+    font-weight: 800;
+    letter-spacing: 16px;
+    margin: 0;
+    background: linear-gradient(135deg, #00f2ea 0%, #00d4ff 30%, #8b5cf6 70%, #c084fc 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    text-shadow: none;
+    filter: drop-shadow(0 0 40px rgba(0, 242, 234, 0.15));
+    user-select: none;
+    animation: brandReveal 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@keyframes brandReveal {
+    from {
+        opacity: 0;
+        transform: translateY(-20px) scale(0.95);
+        letter-spacing: 30px;
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+        letter-spacing: 16px;
+    }
+}
+
+.homepage-subtitle {
+    font-size: 14px;
+    font-weight: 400;
+    color: rgba(255, 255, 255, 0.35);
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    margin: 0 0 28px 0;
+    animation: fadeUp 0.6s 0.3s both;
+}
+
+/* ── Search Bar ── */
+.homepage-search-form {
+    width: 100%;
+    max-width: 560px;
+    animation: fadeUp 0.6s 0.4s both;
+}
+
+.homepage-search-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 16px;
+    padding: 0 18px;
+    height: 52px;
+    transition: all 0.35s cubic-bezier(0.2, 0.8, 0.2, 1);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+}
+
+.homepage-search-wrapper:hover {
+    border-color: rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.homepage-search-focused {
+    border-color: rgba(0, 242, 234, 0.5) !important;
+    background: rgba(0, 242, 234, 0.04) !important;
+    box-shadow:
+        0 0 0 1px rgba(0, 242, 234, 0.15),
+        0 0 30px rgba(0, 242, 234, 0.08),
+        0 4px 20px rgba(0, 0, 0, 0.4);
+}
+
+.homepage-search-icon {
+    color: rgba(255, 255, 255, 0.3);
+    flex-shrink: 0;
+    margin-right: 12px;
+    transition: color 0.3s;
+}
+
+.homepage-search-focused .homepage-search-icon {
+    color: #00f2ea;
+}
+
+.homepage-search-input {
+    flex: 1;
+    background: none;
+    border: none;
+    outline: none;
+    color: #fff;
+    font-size: 15px;
+    font-family: inherit;
+    caret-color: #00f2ea;
+}
+
+.homepage-search-input::placeholder {
+    color: rgba(255, 255, 255, 0.25);
+    font-weight: 400;
+}
+
+.homepage-search-clear {
+    background: rgba(255, 255, 255, 0.08);
+    border: none;
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 18px;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    line-height: 1;
+    padding: 0;
+}
+
+.homepage-search-clear:hover {
+    background: rgba(255, 255, 255, 0.15);
+    color: #fff;
+}
+
+/* ── Greeting ── */
+.homepage-greeting {
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.2);
+    margin: 16px 0 8px 0;
+    animation: fadeUp 0.6s 0.5s both;
+}
+
+/* ── Quick Links ── */
+.homepage-quick-links {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    justify-content: center;
+    animation: fadeUp 0.6s 0.6s both;
+    margin-top: 8px;
+}
+
+.homepage-quick-link {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 14px 16px;
+    min-width: 80px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 14px;
+    cursor: pointer;
+    transition: all 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+    color: #fff;
+}
+
+.homepage-quick-link:hover {
+    background: rgba(255, 255, 255, 0.07);
+    border-color: rgba(255, 255, 255, 0.12);
+    transform: translateY(-3px);
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.4);
+}
+
+.homepage-quick-link:active {
+    transform: translateY(0);
+}
+
+.homepage-quick-link-icon {
+    font-size: 22px;
+    line-height: 1;
+}
+
+.homepage-quick-link-name {
+    font-size: 11px;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.5);
+    letter-spacing: 0.3px;
+}
+
+.homepage-quick-link:hover .homepage-quick-link-name {
+    color: rgba(255, 255, 255, 0.8);
+}
+
+/* ── Footer ── */
+.homepage-footer {
+    position: absolute;
+    bottom: 20px;
+    left: 0;
+    right: 0;
+    text-align: center;
+    z-index: 1;
+    animation: fadeUp 0.6s 0.8s both;
+}
+
+.homepage-footer span {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.12);
+    letter-spacing: 0.5px;
+}
+
+/* ── Shared Animation ── */
+@keyframes fadeUp {
+    from {
+        opacity: 0;
+        transform: translateY(12px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
