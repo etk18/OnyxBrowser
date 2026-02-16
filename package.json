@@ -14,7 +14,7 @@
   },
   "author": "Onyx Team",
   "build": {
-    "appId": "com.onyx.browser.v2",
+    "appId": "com.onyx.browser",
     "productName": "Onyx Browser",
     "executableName": "OnyxBrowser",
     "directories": {
@@ -27,34 +27,26 @@
       "extensions/**/*",
       "package.json"
     ],
-    "mac": {
-      "target": {
-        "target": "dmg",
-        "arch": [
-          "arm64"
-        ]
-      },
-      "icon": "assets/icon.icns",
-      "artifactName": "OnyxBrowser-Mac-M1.dmg",
-      "category": "public.app-category.productivity"
-    },
     "win": {
       "target": "nsis",
       "icon": "assets/icon.ico",
-      "artifactName": "${productName}-Setup-${version}.${ext}",
-      "legalTrademarks": "Onyx AI",
-      "npmRebuild": true
+      "legalTrademarks": "Onyx AI"
     },
-    "dmg": {
-      "title": "Install Onyx Browser",
-      "icon": "assets/icon.icns"
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "deleteAppDataOnUninstall": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Onyx Browser",
+      "artifactName": "${productName}-Setup-${version}.${ext}"
     },
-    "linux": {
-      "target": [
-        "AppImage"
-      ],
-      "icon": "assets/icon.png",
-      "category": "Network"
+    "mac": {
+      "target": "dmg",
+      "icon": "assets/icon.icns",
+      "artifactName": "OnyxBrowser-Mac-${arch}.dmg",
+      "category": "public.app-category.productivity"
     }
   },
   "dependencies": {
