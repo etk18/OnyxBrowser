@@ -7,7 +7,7 @@
     "dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && ELECTRON_RUN_AS_NODE= electron .\"",
     "build": "vite build",
     "postinstall": "electron-builder install-app-deps && chmod +x node_modules/app-builder-bin/mac/app-builder_arm64",
-    "build:win": "electron-builder --win --x64",
+    "build:win": "electron-builder --win --x64 -p never",
     "build:mac": "npm run build && electron-builder --mac --arm64",
     "dist": "npm run build:mac && npm run build:win",
     "preview": "vite preview"
