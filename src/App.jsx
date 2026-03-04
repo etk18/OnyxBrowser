@@ -1017,6 +1017,7 @@ function App() {
         isOpen={aiOpen}
         onClose={() => setAiOpen(false)}
         currentWebContentsId={activeWebContentsId}
+        currentUrl={currentUrl}
       />
 
       {/* ── About Modal ── */}
