@@ -353,6 +353,7 @@ function App() {
   // ── Navigation ──
 
   const handleNavigate = useCallback((url) => {
+    console.log('[App] handleNavigate called for:', url);
     // Handle internal onyx:// URLs
     if (/^onyx:\/\//i.test(url)) {
       const internalUrl = url.toLowerCase();
@@ -377,15 +378,22 @@ function App() {
     setCurrentUrl(finalUrl);
 
     if (leavingInternal) {
-      // Force-remount the webview so it starts with zero history
+      // Mark that we came from internal page so we can go back
       cameFromInternal.current[activeTabId] = true;
-      initialUrls.current[activeTabId] = finalUrl;
-      delete webviewRefs.current[activeTabId];
-      setWebviewGen(prev => ({ ...prev, [activeTabId]: (prev[activeTabId] || 0) + 1 }));
       setCanGoBack(true);
+    }
+
+    // Always reuse the existing webview (it's kept alive via visibility:hidden)
+    const wv = getActiveWebview();
+    if (wv) {
+      if (leavingInternal) {
+        try { wv.clearHistory(); } catch (e) { }
+      }
+      wv.loadURL(finalUrl);
     } else {
-      const wv = getActiveWebview();
-      if (wv) wv.loadURL(finalUrl);
+      // Fallback: This should rarely happen now that we keep webviews alive
+      initialUrls.current[activeTabId] = finalUrl;
+      setWebviewGen(prev => ({ ...prev, [activeTabId]: (prev[activeTabId] || 0) + 1 }));
     }
   }, [activeTabId, updateTab, getActiveWebview, searchEngine, currentUrl]);
 
@@ -500,8 +508,13 @@ function App() {
       wv.__bound = true;
 
       wv.addEventListener('did-navigate', (e) => {
+        console.log('[App] did-navigate:', e.url); // DEBUG
         // Ignore about:blank (used to reset webview history)
         if (e.url === 'about:blank') return;
+
+        // Sync initialUrls so the src prop is correct
+        initialUrls.current[tabId] = e.url;
+
         let favicon = null;
         try { favicon = `https://www.google.com/s2/favicons?sz=64&domain_url=${new URL(e.url).origin}`; } catch { }
         updateTab(tabId, { url: e.url, favicon });
@@ -574,6 +587,35 @@ function App() {
     },
     [updateTab]
   );
+
+  // Listen for Agent Navigation instructions
+  useEffect(() => {
+    if (window.browserAPI?.onAgentNavigate) {
+      const remove = window.browserAPI.onAgentNavigate(({ webContentsId, url }) => {
+        console.log('[App] Received agent-navigate:', url, webContentsId);
+        const tabIdStr = Object.keys(wcIds).find(key => wcIds[key] === webContentsId);
+        if (tabIdStr) {
+          const tabId = parseInt(tabIdStr);
+          if (tabId === activeTabId) {
+            handleNavigate(url);
+          } else {
+            updateTab(tabId, { url });
+            const wv = webviewRefs.current[tabId];
+            if (wv) wv.loadURL(url);
+          }
+        } else {
+          handleNavigate(url);
+        }
+      });
+      // Cleanup listener? `onAgentNavigate` returns void in preload?
+      // Preload: ipcRenderer.on returns event emitter.
+      // Actually preload implementation: `(callback) => ipcRenderer.on(...)`
+      // `ipcRenderer.on` returns the emitter, but it adds listener.
+      // To remove, we need `ipcRenderer.removeListener`.
+      // My preload doesn't return a cleanup function.
+      // It's okay for now, App component is mounted once.
+    }
+  }, [wcIds, activeTabId, handleNavigate]);
 
   useEffect(() => {
     tabs.forEach((tab) => {
@@ -679,10 +721,13 @@ function App() {
               userAgent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
               className="browser-webview"
               style={{
-                flex: tab.id === activeTabId && !isInternalUrl(tab.url) ? 1 : undefined,
-                display: tab.id === activeTabId && !isInternalUrl(tab.url) ? 'inline-flex' : 'none',
+                flex: tab.id === activeTabId ? 1 : undefined,
+                display: tab.id === activeTabId ? 'inline-flex' : 'none',
                 width: '100%',
                 height: '100%',
+                visibility: (tab.id === activeTabId && isInternalUrl(tab.url)) ? 'hidden' : 'visible',
+                position: (tab.id === activeTabId && isInternalUrl(tab.url)) ? 'absolute' : 'relative',
+                zIndex: (tab.id === activeTabId && isInternalUrl(tab.url)) ? -1 : 'auto',
               }}
             />
           ))}

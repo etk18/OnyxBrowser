@@ -673,16 +673,26 @@ ipcMain.handle('perform-agent-action', async (_event, webContentsId, command) =>
     const selector = (params.selector || params.target || '').replace(/\\/g, '\\\\').replace(/`/g, '\\`');
 
     if (tool === 'navigate') {
-      const url = params.url || '';
-      if (!url.startsWith('http')) return { error: 'Invalid URL: ' + url };
+      let url = params.url || '';
+      if (!url.startsWith('http') && !url.startsWith('onyx://') && !url.startsWith('file://')) {
+        url = 'https://' + url;
+      } // Auto-prepend https if missing
+
       try {
-        // Navigate the webview and wait for load
+        // Send IPC to Renderer to handle navigation (updates React state & UI)
+        if (mainWindow) {
+          mainWindow.webContents.send('agent-navigate', { webContentsId, url });
+        } else {
+          wc.loadURL(url);
+        }
+
+        // Wait for page to load (Renderer will trigger navigation on this wc)
         const loadPromise = new Promise((resolve) => {
-          const timeout = setTimeout(() => resolve('timeout'), 10000);
+          const timeout = setTimeout(() => resolve('timeout'), 15000);
           wc.once('did-finish-load', () => { clearTimeout(timeout); resolve('loaded'); });
           wc.once('did-fail-load', (_e, code, desc) => { clearTimeout(timeout); resolve('error: ' + desc); });
         });
-        wc.loadURL(url);
+
         const status = await loadPromise;
         const title = await wc.executeJavaScript('document.title').catch(() => url);
         return `Navigated to "${title}" (${status})`;
@@ -1016,10 +1026,11 @@ ipcMain.handle('perform-agent-action', async (_event, webContentsId, command) =>
 // ── OpenRouter AI Proxy (Multi-Model Fallback) ──
 
 const OPENROUTER_MODELS = [
-  'nvidia/nemotron-3-nano-30b-a3b:free',       // Fastest: 3B active MoE, 256k ctx
-  'mistralai/mistral-small-3.1-24b-instruct:free', // Fast: 24B, 128k ctx
-  'google/gemma-3-27b-it:free',                // Solid: Gemma 3 27B, 131k ctx
-  'meta-llama/llama-3.3-70b-instruct:free',    // Fallback: Llama 3.3 70B, 128k ctx
+  'google/gemini-2.0-flash-lite-preview-02-05:free', // Ultra-Fast: Gemini 2.0 Flash Lite
+  'meta-llama/llama-3-8b-instruct:free',       // Fast: Llama 3 8B
+  'microsoft/phi-3-mini-128k-instruct:free',   // Very Fast: Phi-3 Mini
+  'nvidia/nemotron-3-nano-30b-a3b:free',       // Fallback: Nemotron
+  'mistralai/mistral-small-3.1-24b-instruct:free', // Backup
 ];
 
 ipcMain.handle('openrouter-chat', async (_event, apiKey, messages) => {
@@ -1042,27 +1053,11 @@ ipcMain.handle('openrouter-chat', async (_event, apiKey, messages) => {
         })
       });
 
-      // Rate-limited or overloaded → try next model
-      if (response.status === 429 || response.status === 503) {
-        console.log(`[OpenRouter] ${model} → ${response.status}. Trying next model...`);
-        await new Promise(r => setTimeout(r, 1000));
-        continue;
-      }
-
       if (!response.ok) {
         const errBody = await response.text();
-        console.error(`[OpenRouter] ${model} Error:`, response.status, errBody);
-        // Provider error → try next model
-        if (errBody.includes('Provider returned error') || errBody.includes('rate-limit')) {
-          console.log(`[OpenRouter] ${model} provider error. Trying next...`);
-          continue;
-        }
-        try {
-          const errJson = JSON.parse(errBody);
-          return { error: errJson.error?.message || `API Error (${response.status})` };
-        } catch {
-          return { error: `API Error (${response.status})` };
-        }
+        console.error(`[OpenRouter] ${model} Error (${response.status}):`, errBody);
+        // Continue to next model on any error
+        continue;
       }
 
       const data = await response.json();

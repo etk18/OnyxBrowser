@@ -30,9 +30,10 @@ TOOLS:
 
 RULES:
 1. Type BEFORE clicking any search button. Type auto-submits.
-2. After navigating, interact with the page — don't answer immediately.
-3. Read the PAGE TEXT to find information — you often don't need to scrape.
-4. Keep thoughts to one short sentence.`;
+2. If the goal is just to navigate (e.g. "open amazon"), ANSWER "Done" after navigating.
+3. If extracting info/searching, INTERACT with the page first.
+4. Read the PAGE TEXT to find information — you often don't need to scrape.
+5. Keep thoughts to one short sentence.`;
 
 
 /**
@@ -137,6 +138,12 @@ export async function runAgentLoop(userGoal, webContentsId, updateUI) {
             }
 
             // ── 7. Execute tool ──
+            if (!cmd.tool) {
+                history.push({ role: "user", content: "ERROR: You returned an empty response or invalid JSON. Please try again with a valid tool." });
+                errors++;
+                continue;
+            }
+
             updateUI('action', `⚡ ${cmd.tool}(${JSON.stringify(cmd.params || {})})`);
 
             if (!webContentsId || !window.browserAPI?.performAgentAction) {

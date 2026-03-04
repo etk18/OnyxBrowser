@@ -77,6 +77,7 @@ contextBridge.exposeInMainWorld('browserAPI', {
 
   // Agent
   performAgentAction: (webContentsId, command) => ipcRenderer.invoke('perform-agent-action', webContentsId, command),
+  onAgentNavigate: (callback) => ipcRenderer.on('agent-navigate', (_event, data) => callback(data)),
 
   // OpenRouter AI Proxy
   openrouterChat: (apiKey, messages) => ipcRenderer.invoke('openrouter-chat', apiKey, messages),
