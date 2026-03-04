@@ -7,16 +7,17 @@
     "dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && ELECTRON_RUN_AS_NODE= electron .\"",
     "build": "vite build",
     "postinstall": "electron-builder install-app-deps && chmod +x node_modules/app-builder-bin/mac/app-builder_arm64",
-    "build:win": "electron-builder --win --x64 -p never",
+    "build:win": "npm run build && electron-builder --win --x64 -p never",
     "build:mac": "npm run build && electron-builder --mac --arm64",
-    "dist": "npm run build:mac && npm run build:win",
+    "dist": "npm run build && electron-builder --mac --arm64 && electron-builder --win --x64 -p never",
     "preview": "vite preview"
   },
-  "author": "Onyx Team",
+  "author": "Eesh Sagar",
   "build": {
-    "appId": "com.onyx.browser",
-    "productName": "Onyx Browser",
+    "appId": "com.eeshsagar.onyxbrowser",
+    "productName": "OnyxBrowser",
     "executableName": "OnyxBrowser",
+    "asar": true,
     "directories": {
       "output": "release",
       "buildResources": "assets"
@@ -26,6 +27,18 @@
       "electron/**/*",
       "extensions/**/*",
       "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "backend",
+        "to": "backend",
+        "filter": [
+          "**/*",
+          "!venv/**",
+          "!__pycache__/**",
+          "!.env"
+        ]
+      }
     ],
     "win": {
       "target": "nsis",
@@ -39,7 +52,8 @@
       "deleteAppDataOnUninstall": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Onyx Browser",
+      "shortcutName": "OnyxBrowser",
+      "uninstallDisplayName": "OnyxBrowser",
       "artifactName": "${productName}-Setup-${version}.${ext}"
     },
     "mac": {
@@ -47,6 +61,26 @@
       "icon": "assets/icon.icns",
       "artifactName": "OnyxBrowser-Mac-${arch}.dmg",
       "category": "public.app-category.productivity"
+    },
+    "dmg": {
+      "title": "${productName} ${version}",
+      "icon": "assets/icon.icns",
+      "contents": [
+        {
+          "x": 130,
+          "y": 220
+        },
+        {
+          "x": 410,
+          "y": 220,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ],
+      "window": {
+        "width": 540,
+        "height": 380
+      }
     }
   },
   "dependencies": {
