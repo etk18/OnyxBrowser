@@ -2,11 +2,11 @@
   <img src="assets/icon.ico" width="80" />
 </p>
 
-<h1 align="center">Onyx Browser</h1>
+<h1 align="center">OnyxBrowser</h1>
 
 <p align="center">
   <b>The High-Performance Agentic Browser</b><br/>
-  <sub>An AI-native Electron browser with a FastAPI + LangChain autonomous agent backend.</sub>
+  <sub>An AI-native Electron browser with a FastAPI + LangChain autonomous agent backend and voice control.</sub>
 </p>
 
 <p align="center">
@@ -24,7 +24,7 @@
 
 Onyx is a **full-featured desktop web browser** built with Electron, React, and Vite — supercharged with an **autonomous AI agent** that can navigate, click, type, scrape, and summarise web pages on your behalf.
 
-Unlike bolt-on browser extensions, the AI agent lives at the core of the architecture: a dedicated **FastAPI + LangChain** backend powered by Groq or OpenAI processes natural-language commands and returns structured DOM actions that the Electron renderer executes in real-time.
+Unlike bolt-on browser extensions, the AI agent lives at the core of the architecture: a dedicated **FastAPI + LangChain** backend powered by Groq or OpenAI processes natural-language commands (typed **or spoken**) and returns structured DOM actions that the Electron renderer executes in real-time.
 
 > **Think of it as Chrome meets an AI co-pilot — built from scratch.**
 
@@ -33,25 +33,31 @@ Unlike bolt-on browser extensions, the AI agent lives at the core of the archite
 ## 🏗️ Architecture
 
 ```
-┌──────────────────────────────────────────────────────────┐
-│                    Electron Main Process                  │
-│  ┌─────────────┐  ┌──────────┐  ┌──────────────────────┐ │
-│  │ Window Mgmt │  │ Ad-Block │  │ Smart DOM Traversal  │ │
-│  │  Downloads  │  │ (Cliqz)  │  │   Engine (IPC)       │ │
-│  └─────────────┘  └──────────┘  └──────────────────────┘ │
-├──────────────────────────────────────────────────────────┤
-│                  Electron Renderer (React)                │
-│  ┌─────────┐ ┌────────┐ ┌───────────┐ ┌──────────────┐  │
-│  │ Omnibox │ │ TabBar │ │ AI Sidebar│ │  Web3 Panel  │  │
-│  └─────────┘ └────────┘ └───────────┘ └──────────────┘  │
-├──────────────────────────────────────────────────────────┤
-│               FastAPI Backend  (localhost:8000)           │
-│  ┌────────────────┐  ┌───────────────┐  ┌─────────────┐ │
-│  │ routers/agent  │→ │ LangChain LLM │→ │ Playwright  │ │
-│  │  /execute      │  │ (Groq/OpenAI) │  │  Scraper    │ │
-│  │  /voice        │  │ Pydantic      │  │             │ │
-│  └────────────────┘  └───────────────┘  └─────────────┘ │
-└──────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│                     Electron Main Process                     │
+│  ┌──────────────┐  ┌──────────┐  ┌────────────────────────┐ │
+│  │ Window Mgmt  │  │ Ad-Block │  │  Smart DOM Traversal   │ │
+│  │  Downloads   │  │ (Cliqz)  │  │   Engine (IPC)         │ │
+│  └──────────────┘  └──────────┘  └────────────────────────┘ │
+├──────────────────────────────────────────────────────────────┤
+│                   Electron Renderer (React)                   │
+│  ┌─────────┐ ┌────────┐ ┌──────────────┐ ┌───────────────┐ │
+│  │ Omnibox │ │ TabBar │ │ AI Sidebar   │ │  Web3 Panel   │ │
+│  │         │ │        │ │ + Voice 🎤   │ │               │ │
+│  └─────────┘ └────────┘ └──────┬───────┘ └───────────────┘ │
+│                                │                             │
+│          ┌─────────────────────┼──────────────────┐          │
+│          │   onyxApi.js        │    executor.js    │          │
+│          │   (HTTP client)     │   (DOM actions)   │          │
+│          └─────────────────────┼──────────────────┘          │
+├────────────────────────────────┼─────────────────────────────┤
+│               FastAPI Backend  │ (localhost:8000)             │
+│  ┌─────────────────┐  ┌───────┴────────┐  ┌──────────────┐ │
+│  │  routers/agent   │→ │  LangChain LLM │→ │  Playwright  │ │
+│  │  /execute        │  │ (Groq/OpenAI)  │  │   Scraper    │ │
+│  │  /voice          │  │ PydanticParser │  │              │ │
+│  └─────────────────┘  └────────────────┘  └──────────────┘ │
+└──────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -77,12 +83,16 @@ Unlike bolt-on browser extensions, the AI agent lives at the core of the archite
 | Feature | Description |
 |---|---|
 | **Natural Language Commands** | Tell the agent what to do in plain English — *"open amazon and search for headphones"* |
+| **🎤 Voice Commands** | Click the mic button and speak your command — auto-transcribed and executed via `webkitSpeechRecognition` |
+| **Dual-Mode Agent** | **Intelligence** (FastAPI + LangChain backend) for action tasks, **Lite** (in-process ReAct loop) as offline fallback |
+| **DOM Execution Engine** | Translates AI-generated `BrowserActionPlan` into sequential IPC commands with live status updates |
 | **ReAct Loop** | 5-step autonomous reasoning loop with thought → action → observation cycles |
 | **Smart DOM Traversal** | Multi-strategy element finder: CSS selectors → attribute matching → text-content fuzzy matching → Shadow DOM traversal |
 | **Onyx Pulse Highlights** | Cyan glow animation on targeted elements so you can see exactly what the agent is interacting with |
 | **Structured Output** | LangChain `PydanticOutputParser` guarantees type-safe `BrowserActionPlan` responses with ordered action sequences |
 | **Dual LLM Support** | Groq (Llama 3.3 70B — fast & free) or OpenAI (GPT-4o-mini) — auto-selects based on available API keys |
-| **Graceful Degradation** | Falls back to informative error responses if the LLM is unreachable |
+| **Backend Health Check** | Green/red status dot in the sidebar header shows backend connectivity in real-time |
+| **Graceful Degradation** | Auto-falls back from Intelligence → Lite mode if the backend is unreachable |
 
 ### 🔗 Web3
 | Feature | Description |
@@ -97,39 +107,44 @@ Unlike bolt-on browser extensions, the AI agent lives at the core of the archite
 ```
 OnyxBrowser/
 ├── electron/
-│   ├── main.js              # Main process (window, IPC, ad-blocker, agent actions)
-│   └── preload.js           # Context bridge — exposes browserAPI to renderer
+│   ├── main.js                # Main process (window, IPC, ad-blocker, agent actions)
+│   └── preload.js             # Context bridge — exposes browserAPI to renderer
 ├── src/
-│   ├── App.jsx              # Root component — tabs, navigation, sidebar
-│   ├── App.css              # Global styles (dark theme, glassmorphism)
+│   ├── App.jsx                # Root component — tabs, navigation, sidebar
+│   ├── App.css                # Global styles (dark theme, glassmorphism)
 │   ├── components/
-│   │   ├── AISidebar.jsx    # AI chat sidebar UI
-│   │   ├── HomePage.jsx     # New-tab start page
-│   │   ├── Omnibox.jsx      # URL / search bar
-│   │   ├── TopBar.jsx       # Tab strip + window controls
-│   │   ├── FindBar.jsx      # In-page search
-│   │   ├── HistoryPage.jsx  # Browsing history viewer
-│   │   ├── SettingsModal.jsx# Settings (search engine, ad-block, cache)
-│   │   ├── Web3Panel.jsx    # Ethereum wallet panel
+│   │   ├── AISidebar.jsx      # Dual-mode AI sidebar (Intelligence + Lite)
+│   │   ├── HomePage.jsx       # New-tab start page
+│   │   ├── Omnibox.jsx        # URL / search bar
+│   │   ├── TopBar.jsx         # Tab strip + window controls
+│   │   ├── FindBar.jsx        # In-page search
+│   │   ├── HistoryPage.jsx    # Browsing history viewer
+│   │   ├── SettingsModal.jsx  # Settings (search engine, ad-block, cache)
+│   │   ├── Web3Panel.jsx      # Ethereum wallet panel
 │   │   └── ...
+│   ├── hooks/
+│   │   └── useVoiceCommand.js # webkitSpeechRecognition hook (continuous, auto-stop)
 │   ├── services/
-│   │   ├── agent.js         # Frontend ReAct loop (calls IPC → main process)
-│   │   └── ai.js            # LLM API client (OpenRouter / Gemini)
+│   │   ├── onyxApi.js         # FastAPI backend HTTP client
+│   │   ├── agent.js           # Frontend ReAct loop (Lite fallback)
+│   │   └── ai.js              # LLM API client (OpenRouter / Gemma)
+│   ├── utils/
+│   │   └── executor.js        # DOM execution engine (BrowserAction → IPC)
 │   └── adblocker/
-│       └── observer.js      # YouTube ad-skip MutationObserver
-├── backend/                  # ← FastAPI Python backend
-│   ├── main.py              # FastAPI app, CORS, health routes
-│   ├── schemas.py           # Pydantic request/response models
+│       └── observer.js        # YouTube ad-skip MutationObserver
+├── backend/                    # FastAPI Python backend
+│   ├── main.py                # FastAPI app, CORS, health routes
+│   ├── schemas.py             # Pydantic request/response models
 │   ├── routers/
-│   │   └── agent.py         # POST /api/agent/execute & /voice
+│   │   └── agent.py           # POST /api/agent/execute & /voice
 │   ├── services/
-│   │   ├── scraper.py       # Async Playwright page scraper
-│   │   └── llm_agent.py     # LangChain brain + PydanticOutputParser
-│   ├── requirements.txt     # Python dependencies
-│   └── .env.example         # API key template
-├── assets/                   # App icons (icns, ico)
-├── package.json             # Node dependencies & build scripts
-└── vite.config.js           # Vite configuration
+│   │   ├── scraper.py         # Async Playwright page scraper
+│   │   └── llm_agent.py       # LangChain brain + PydanticOutputParser
+│   ├── requirements.txt       # Python dependencies
+│   └── .env.example           # API key template
+├── assets/                     # App icons (icon.icns, icon.ico)
+├── package.json               # Node deps, build scripts, electron-builder config
+└── vite.config.js             # Vite configuration
 ```
 
 ---
@@ -186,7 +201,18 @@ uvicorn main:app --reload --port 8000
 npm run dev
 ```
 
-The browser window opens automatically. The AI sidebar connects to `localhost:8000` for agentic tasks.
+The browser window opens automatically. The AI sidebar shows a **green dot** when connected to the backend.
+
+---
+
+## 🎤 Voice Commands
+
+1. Open the AI sidebar (⚡ icon in the top bar)
+2. Click the **microphone button** — it pulses cyan when listening
+3. Speak your command: *"Open YouTube and search for lofi music"*
+4. The transcript auto-submits to the agent pipeline — no typing needed
+
+> Voice recognition uses Chromium's built-in `webkitSpeechRecognition` API. Microphone permissions are automatically granted by Electron.
 
 ---
 
@@ -230,18 +256,31 @@ Interactive API docs are available at **http://localhost:8000/docs** (Swagger UI
 
 ## 📦 Build for Production
 
+OnyxBrowser uses **electron-builder** to produce native installers.
+
 ```bash
-# macOS (Apple Silicon)
+# macOS (Apple Silicon) → .dmg
 npm run build:mac
 
-# Windows (x64)
+# Windows (x64) → .exe installer
 npm run build:win
 
-# Both
+# Both platforms at once
 npm run dist
 ```
 
-Build artifacts are output to the `release/` directory.
+| Platform | Output | Installer Type |
+|---|---|---|
+| macOS | `release/OnyxBrowser-Mac-arm64.dmg` | Drag-and-drop DMG |
+| Windows | `release/OnyxBrowser-Setup-1.0.0.exe` | NSIS one-click installer |
+
+> **Note:** Cross-compiling Windows from macOS requires Wine. For a native `.exe`, run `npm run build:win` on a Windows machine or use GitHub Actions CI.
+
+### 🔒 Security Hardening
+- `nodeIntegration: false` — no Node.js access from renderer
+- `contextIsolation: true` — all IPC goes through the preload bridge
+- `asar: true` — source code is bundled into an encrypted archive
+- Backend bundled as `extraResources` (excludes `venv/`, `.env`, `__pycache__/`)
 
 ---
 
@@ -254,6 +293,7 @@ Build artifacts are output to the `release/` directory.
 | **Styling** | Custom CSS (dark-first, glassmorphism) |
 | **Backend** | FastAPI, Uvicorn |
 | **AI/LLM** | LangChain, Groq (Llama 3.3), OpenAI (GPT-4o-mini) |
+| **Voice** | webkitSpeechRecognition (Chromium native) |
 | **Scraping** | Playwright (async, headless Chromium) |
 | **Ad Blocking** | @cliqz/adblocker-electron |
 | **Web3** | ethers.js, Web3Modal |
@@ -279,5 +319,5 @@ This project is open source and available under the [MIT License](LICENSE).
 ---
 
 <p align="center">
-  Built with ☕ by the <b>Onyx Team</b>
+  Built with ☕ by <b>Eesh Sagar</b>
 </p>
