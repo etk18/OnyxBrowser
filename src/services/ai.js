@@ -27,7 +27,14 @@ function cleanModelOutput(text) {
 }
 
 export async function askOnyx(messages, jsonMode = false) {
-    const apiKey = localStorage.getItem('onyx_openrouter_key');
+    // Try secure electron-store first, fallback to localStorage
+    let apiKey;
+    if (window.browserAPI?.getApiKey) {
+        apiKey = await window.browserAPI.getApiKey('openrouter');
+    }
+    if (!apiKey) {
+        apiKey = localStorage.getItem('onyx_openrouter_key');
+    }
     if (!apiKey) throw new Error("OpenRouter API Key is missing. Please add it in Settings.");
 
     try {

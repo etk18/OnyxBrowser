@@ -118,6 +118,15 @@ async function initStore() {
         default: [],
         items: { type: 'string' },
       },
+      apiKeys: {
+        type: 'object',
+        default: {},
+        properties: {
+          openrouter: { type: 'string', default: '' },
+          groq: { type: 'string', default: '' },
+          openai: { type: 'string', default: '' },
+        },
+      },
     },
   });
 }
@@ -457,6 +466,28 @@ ipcMain.handle('clear-cache', async () => {
     console.error('[Settings] Clear cache failed:', err.message);
     return { ok: false, error: err.message };
   }
+});
+
+// ── Secure API Key Storage (electron-store, never in project root) ──
+
+ipcMain.handle('get-api-key', (_event, provider) => {
+  if (!store) return '';
+  return store.get(`apiKeys.${provider}`, '');
+});
+
+ipcMain.handle('set-api-key', (_event, provider, key) => {
+  if (!store) return;
+  store.set(`apiKeys.${provider}`, key || '');
+  console.log(`[Settings] API key ${key ? 'saved' : 'cleared'} for: ${provider}`);
+});
+
+ipcMain.handle('get-all-api-keys', () => {
+  if (!store) return {};
+  return store.get('apiKeys', {});
+});
+
+ipcMain.handle('get-user-data-path', () => {
+  return app.getPath('userData');
 });
 
 // ── AI Content Extraction ──

@@ -26,7 +26,23 @@
       "dist/**/*",
       "electron/**/*",
       "extensions/**/*",
-      "package.json"
+      "package.json",
+      "!**/.env",
+      "!**/.env.*",
+      "!**/*.map",
+      "!**/node_modules/.cache/**",
+      "!**/.DS_Store",
+      "!**/thumbs.db",
+      "!**/config.json",
+      "!**/__pycache__/**",
+      "!**/backend/**",
+      "!**/src/**",
+      "!**/.git/**",
+      "!**/.github/**",
+      "!**/.vscode/**",
+      "!**/.idea/**",
+      "!**/release/**",
+      "!**/coverage/**"
     ],
     "extraResources": [
       {
@@ -36,7 +52,10 @@
           "**/*",
           "!venv/**",
           "!__pycache__/**",
-          "!.env"
+          "!.env",
+          "!.env.*",
+          "!*.db",
+          "!*.sqlite"
         ]
       }
     ],

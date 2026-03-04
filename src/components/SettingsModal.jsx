@@ -27,9 +27,15 @@ export default function SettingsModal({ onClose }) {
                 if (s) setSettings(s);
             });
         }
-        // Load stored API key
-        const storedKey = localStorage.getItem('onyx_openrouter_key') || '';
-        setApiKey(storedKey);
+        // Load API key from secure electron-store
+        if (window.browserAPI?.getApiKey) {
+            window.browserAPI.getApiKey('openrouter').then((key) => {
+                setApiKey(key || '');
+            });
+        } else {
+            // Fallback for dev mode without preload
+            setApiKey(localStorage.getItem('onyx_openrouter_key') || '');
+        }
     }, []);
 
     const handleChange = (key, value) => {
@@ -40,7 +46,11 @@ export default function SettingsModal({ onClose }) {
     };
 
     const handleSave = () => {
-        // Save API key
+        // Save API key to secure electron-store
+        if (window.browserAPI?.setApiKey) {
+            window.browserAPI.setApiKey('openrouter', apiKey.trim());
+        }
+        // Also keep in localStorage as fallback for ai.js in dev
         if (apiKey.trim()) {
             localStorage.setItem('onyx_openrouter_key', apiKey.trim());
         } else {

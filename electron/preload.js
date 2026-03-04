@@ -81,4 +81,10 @@ contextBridge.exposeInMainWorld('browserAPI', {
 
   // OpenRouter AI Proxy
   openrouterChat: (apiKey, messages) => ipcRenderer.invoke('openrouter-chat', apiKey, messages),
+
+  // Secure API Key Storage (via electron-store in userData)
+  getApiKey: (provider) => ipcRenderer.invoke('get-api-key', provider),
+  setApiKey: (provider, key) => ipcRenderer.invoke('set-api-key', provider, key),
+  getAllApiKeys: () => ipcRenderer.invoke('get-all-api-keys'),
+  getUserDataPath: () => ipcRenderer.invoke('get-user-data-path'),
 });
