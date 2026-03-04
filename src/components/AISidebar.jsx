@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { processUserCommand, runAgentLoop } from '../services/agent';
 import { requestAgentAction, checkBackendHealth } from '../services/onyxApi';
 import { executeBrowserActions } from '../utils/executor';
+import useVoiceCommand from '../hooks/useVoiceCommand';
 
 /**
  * Onyx Intelligence Sidebar — Dual-Mode Agent
@@ -33,6 +34,7 @@ export default function AISidebar({ isOpen, onClose, currentWebContentsId, curre
     const [backendOnline, setBackendOnline] = useState(null); // null=unknown, true/false
     const messagesEndRef = useRef(null);
     const abortRef = useRef(false);
+    const handleSendRef = useRef(null);
 
     // Auto-scroll to bottom of chat
     useEffect(() => {
@@ -49,6 +51,20 @@ export default function AISidebar({ isOpen, onClose, currentWebContentsId, curre
     const addMessage = (text, role) => {
         setMessages((prev) => [...prev, { role, text }]);
     };
+
+    // ── Voice Command Hook ──
+    const onVoiceResult = useCallback((finalTranscript) => {
+        if (finalTranscript && handleSendRef.current) {
+            handleSendRef.current(finalTranscript);
+        }
+    }, []);
+
+    const {
+        isListening,
+        interimText,
+        error: voiceError,
+        toggleListening,
+    } = useVoiceCommand({ onResult: onVoiceResult });
 
     // ── Backend-Powered Agent (FastAPI + LangChain) ──
 
@@ -243,6 +259,9 @@ export default function AISidebar({ isOpen, onClose, currentWebContentsId, curre
         }
     };
 
+    // Keep ref in sync so voice callback can call latest handleSend
+    handleSendRef.current = handleSend;
+
     const handleStop = () => {
         abortRef.current = true;
         setLoading(false);
@@ -309,6 +328,13 @@ export default function AISidebar({ isOpen, onClose, currentWebContentsId, curre
                 )}
             </div>
 
+            {/* Voice error banner */}
+            {voiceError && (
+                <div className="ai-voice-error">
+                    🎤 {voiceError}
+                </div>
+            )}
+
             <div className="ai-input-area">
                 {isAutonomous ? (
                     <button className="ai-stop-btn" onClick={handleStop}>
@@ -318,7 +344,7 @@ export default function AISidebar({ isOpen, onClose, currentWebContentsId, curre
                     <>
                         <textarea
                             className="ai-input"
-                            placeholder="Tell Onyx what to do…"
+                            placeholder={isListening ? (interimText || '🎤 Listening…') : 'Tell Onyx what to do…'}
                             value={input}
                             onChange={(e) => setInput(e.target.value)}
                             onKeyDown={(e) => {
@@ -327,9 +353,22 @@ export default function AISidebar({ isOpen, onClose, currentWebContentsId, curre
                                     handleSend();
                                 }
                             }}
-                            disabled={loading}
+                            disabled={loading || isListening}
                             rows={1}
                         />
+                        <button
+                            className={`ai-mic-btn ${isListening ? 'ai-mic-active' : ''}`}
+                            onClick={toggleListening}
+                            disabled={loading}
+                            title={isListening ? 'Stop listening' : 'Voice command'}
+                        >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                                <rect x="9" y="1" width="6" height="14" rx="3" stroke="currentColor" strokeWidth="2" />
+                                <path d="M5 10C5 13.866 8.134 17 12 17C15.866 17 19 13.866 19 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                                <path d="M12 17V21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                                <path d="M8 21H16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                            </svg>
+                        </button>
                         <button className="ai-send-btn" onClick={() => handleSend()} disabled={loading || !input.trim()}>
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
                                 <path d="M22 2L11 13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
