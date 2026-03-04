@@ -38,3 +38,7 @@ yarn-error.log*
 Thumbs.db
 ehthumbs.db
 Desktop.ini
+website/node_modules
+website/dist
+*.dmg
+*.exe
