@@ -18,6 +18,7 @@ backend/chroma_db
 # Rust build artifacts
 onyx-shield/target
 onyx-shield/node_modules
+*.node
 
 # Misc
 .DS_Store
