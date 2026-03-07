@@ -33,10 +33,10 @@ export default function Download() {
                     </div>
                     <h3>macOS</h3>
                     <p className="dl-arch">Apple Silicon (arm64)</p>
-                    <a href="https://github.com/etk18/OnyxBrowser/releases/latest/download/OnyxBrowser-Mac-arm64.dmg" className="btn btn-primary dl-btn">
+                    <a href="https://github.com/etk18/OnyxBrowser/releases/download/v0.1.0-beta/OnyxBrowser-Mac-arm64.dmg" className="btn btn-primary dl-btn">
                         <DownloadIcon /> Download .dmg
                     </a>
-                    <span className="dl-size">~180 MB</span>
+                    <span className="dl-size">~123 MB</span>
                 </motion.div>
 
                 {/* Windows */}
@@ -46,7 +46,7 @@ export default function Download() {
                     </div>
                     <h3>Windows</h3>
                     <p className="dl-arch">x64 (64-bit)</p>
-                    <a href="https://github.com/etk18/OnyxBrowser/releases/latest/download/OnyxBrowser-Setup-1.0.0.exe" className="btn btn-primary dl-btn">
+                    <a href="https://github.com/etk18/OnyxBrowser/releases/download/v0.1.0-beta/OnyxBrowser-Setup-0.1.0-beta.exe" className="btn btn-primary dl-btn">
                         <DownloadIcon /> Download .exe
                     </a>
                     <span className="dl-size">~140 MB</span>
