@@ -171,7 +171,7 @@ const sectionAnim = (delay) => ({
 
 export default function ReleaseNotes() {
     return (
-        <section className="container section-pad" id="releases">
+        <section className="container rn-page" id="releases">
             <motion.div
                 className="section-header"
                 initial={{ opacity: 0, y: 20 }}
@@ -179,6 +179,7 @@ export default function ReleaseNotes() {
                 viewport={{ once: true }}
                 transition={{ duration: 0.6 }}
             >
+                <a href="#" className="rn-back-link">&larr; Back to Home</a>
                 <h2 className="section-title">
                     Release <span className="gradient-text">Notes</span>
                 </h2>

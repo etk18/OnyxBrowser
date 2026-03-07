@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 
-export default function Navbar() {
+export default function Navbar({ page }) {
     const [scrolled, setScrolled] = useState(false)
 
     useEffect(() => {
@@ -24,11 +24,21 @@ export default function Navbar() {
                     <span className="nav-beta-badge">BETA</span>
                 </a>
                 <div className="nav-links">
-                    <a href="#features">Features</a>
-                    <a href="#releases">Releases</a>
-                    <a href="#download">Download</a>
-                    <a href="#guide">Setup</a>
-                    <a href="https://github.com/etk18/OnyxBrowser" target="_blank" rel="noopener">GitHub</a>
+                    {page === 'releases' ? (
+                        <>
+                            <a href="#">Home</a>
+                            <a href="#download">Download</a>
+                            <a href="https://github.com/etk18/OnyxBrowser" target="_blank" rel="noopener">GitHub</a>
+                        </>
+                    ) : (
+                        <>
+                            <a href="#features">Features</a>
+                            <a href="#/releases">Releases</a>
+                            <a href="#download">Download</a>
+                            <a href="#guide">Setup</a>
+                            <a href="https://github.com/etk18/OnyxBrowser" target="_blank" rel="noopener">GitHub</a>
+                        </>
+                    )}
                 </div>
             </div>
         </motion.nav>

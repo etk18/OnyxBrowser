@@ -1276,7 +1276,23 @@ button {
     50% { box-shadow: 0 0 12px rgba(0, 242, 234, 0.6); }
 }
 
-/* ── Release Notes ─────────────────────────────── */
+/* ── Release Notes (standalone page) ──────────── */
+.rn-page {
+    padding-top: 120px;
+    padding-bottom: 80px;
+    min-height: 100vh;
+}
+.rn-back-link {
+    display: inline-block;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--accent);
+    margin-bottom: 24px;
+    transition: opacity 0.2s;
+}
+.rn-back-link:hover {
+    opacity: 0.7;
+}
 .rn-release {
     margin-top: 48px;
 }

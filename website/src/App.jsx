@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react'
 import Navbar from './components/Navbar'
 import Hero from './components/Hero'
 import Features from './components/Features'
@@ -7,7 +8,22 @@ import Guide from './components/Guide'
 import Disclaimer from './components/Disclaimer'
 import Footer from './components/Footer'
 
+function getPage() {
+  return window.location.hash === '#/releases' ? 'releases' : 'home'
+}
+
 export default function App() {
+  const [page, setPage] = useState(getPage)
+
+  useEffect(() => {
+    const onHash = () => {
+      setPage(getPage())
+      window.scrollTo(0, 0)
+    }
+    window.addEventListener('hashchange', onHash)
+    return () => window.removeEventListener('hashchange', onHash)
+  }, [])
+
   return (
     <>
       {/* Animated aurora background */}
@@ -20,14 +36,22 @@ export default function App() {
 
       {/* Page content */}
       <div className="page-wrap">
-        <Navbar />
-        <Hero />
-        <Features />
-        <ReleaseNotes />
-        <Download />
-        <Guide />
-        <Disclaimer />
-        <Footer />
+        <Navbar page={page} />
+        {page === 'releases' ? (
+          <>
+            <ReleaseNotes />
+            <Footer />
+          </>
+        ) : (
+          <>
+            <Hero />
+            <Features />
+            <Download />
+            <Guide />
+            <Disclaimer />
+            <Footer />
+          </>
+        )}
       </div>
     </>
   )
