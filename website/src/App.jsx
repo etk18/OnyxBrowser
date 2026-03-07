@@ -1,6 +1,7 @@
 import Navbar from './components/Navbar'
 import Hero from './components/Hero'
 import Features from './components/Features'
+import OnyxLedger from './components/OnyxLedger'
 import Download from './components/Download'
 import Guide from './components/Guide'
 import Disclaimer from './components/Disclaimer'
@@ -22,6 +23,7 @@ export default function App() {
         <Navbar />
         <Hero />
         <Features />
+        <OnyxLedger />
         <Download />
         <Guide />
         <Disclaimer />

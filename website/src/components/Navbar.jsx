@@ -21,9 +21,11 @@ export default function Navbar() {
                 <a href="#" className="nav-brand">
                     <img src="/icon.ico" alt="Onyx" />
                     <span>OnyxBrowser</span>
+                    <span className="nav-beta-badge">BETA</span>
                 </a>
                 <div className="nav-links">
                     <a href="#features">Features</a>
+                    <a href="#ledger">Ledger</a>
                     <a href="#download">Download</a>
                     <a href="#guide">Setup</a>
                     <a href="https://github.com/etk18/OnyxBrowser" target="_blank" rel="noopener">GitHub</a>

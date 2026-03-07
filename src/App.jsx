@@ -10,7 +10,9 @@ import HistoryPage from './components/HistoryPage';
 import Web3Panel from './components/Web3Panel';
 import AISidebar from './components/AISidebar';
 import HomePage from './components/HomePage';
+import OnyxLedger from './components/OnyxLedger';
 import ErrorBoundary from './components/ErrorBoundary';
+import WalletModal from './components/WalletModal';
 import { useWallet } from './hooks/useWallet';
 import './App.css';
 
@@ -49,6 +51,7 @@ function App() {
   const [menuTab, setMenuTab] = useState('tabs'); // 'tabs' | 'history' | 'bookmarks' | 'downloads' | 'wallet'
   const [aboutOpen, setAboutOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [walletRequest, setWalletRequest] = useState(null); // { origin } when dApp requests connection
   /* REMOVED DUPLICATE */
   const [searchEngine, setSearchEngine] = useState('google');
 
@@ -86,6 +89,7 @@ function App() {
   const initialUrls = useRef({ 1: 'onyx://newtab' });
   const cameFromInternal = useRef({}); // Track tabs that navigated from internal pages
   const [webviewGen, setWebviewGen] = useState({}); // Per-tab generation counter for force-remounting webviews
+  const [webviewPreloadPath, setWebviewPreloadPath] = useState(null); // Absolute path to webview-preload.js
   const activeTabIdRef = useRef(activeTabId);
   activeTabIdRef.current = activeTabId;
 
@@ -95,6 +99,15 @@ function App() {
   const loadingTimers = useRef({});
 
   // ── Helpers ──
+
+  /** Check if a webview's internal webContents is initialized and safe to call methods on */
+  const isWebviewReady = (wv) => {
+    try {
+      return wv && typeof wv.getWebContentsId === 'function' && wv.getWebContentsId() > 0;
+    } catch {
+      return false;
+    }
+  };
 
   const updateTab = useCallback((id, patch) => {
     setTabs((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)));
@@ -139,51 +152,55 @@ function App() {
 
   useEffect(() => {
     if (!window.browserAPI) return;
-    window.browserAPI.onDownloadStarted((data) => {
+    const unsub1 = window.browserAPI.onDownloadStarted((data) => {
       setDownloads((prev) => [...prev, { id: data.id, fileName: data.fileName, percent: 0, state: 'progressing', totalBytes: data.totalBytes }]);
     });
-    window.browserAPI.onDownloadProgress((data) => {
+    const unsub2 = window.browserAPI.onDownloadProgress((data) => {
       setDownloads((prev) => prev.map((d) => d.id === data.id ? { ...d, percent: data.percent } : d));
     });
-    window.browserAPI.onDownloadPaused((data) => {
+    const unsub3 = window.browserAPI.onDownloadPaused((data) => {
       setDownloads((prev) => prev.map((d) => d.id === data.id ? { ...d, state: 'paused' } : d));
     });
-    window.browserAPI.onDownloadComplete((data) => {
+    const unsub4 = window.browserAPI.onDownloadComplete((data) => {
       setDownloads((prev) => prev.map((d) => d.id === data.id ? { ...d, state: data.state, percent: 100, path: data.path } : d));
     });
+    return () => { unsub1(); unsub2(); unsub3(); unsub4(); };
   }, []);
 
   // ── New Tab from context menu IPC ──
 
   useEffect(() => {
     if (!window.browserAPI?.onNewTab) return;
-    window.browserAPI.onNewTab((url) => {
+    const unsub = window.browserAPI.onNewTab((url) => {
       const tab = createTab(url);
       initialUrls.current[tab.id] = url;
       setTabs((prev) => [...prev, tab]);
       setActiveTabId(tab.id);
     });
+    return () => unsub();
   }, []);
 
   // ── Audio state listener ──
 
   useEffect(() => {
     if (!window.browserAPI?.onTabAudioState) return;
-    window.browserAPI.onTabAudioState((data) => {
+    const unsub = window.browserAPI.onTabAudioState((data) => {
       setAudioState((prev) => ({
         ...prev,
         [data.webContentsId]: { isPlaying: data.isPlaying, isMuted: data.isMuted },
       }));
     });
+    return () => unsub();
   }, []);
 
   // ── Security status listener ──
 
   useEffect(() => {
     if (!window.browserAPI?.onSecurityStatus) return;
-    window.browserAPI.onSecurityStatus((data) => {
+    const unsub = window.browserAPI.onSecurityStatus((data) => {
       setSecurityStatus(data);
     });
+    return () => unsub();
   }, []);
 
   // ── Load settings on mount ──
@@ -192,6 +209,16 @@ function App() {
     if (window.browserAPI?.getSettings) {
       window.browserAPI.getSettings().then((s) => {
         if (s?.searchEngine) setSearchEngine(s.searchEngine);
+      });
+    }
+  }, []);
+
+  // ── Fetch webview preload path for Web3 injection ──
+
+  useEffect(() => {
+    if (window.browserAPI?.getWebviewPreloadPath) {
+      window.browserAPI.getWebviewPreloadPath().then((p) => {
+        if (p) setWebviewPreloadPath(p);
       });
     }
   }, []);
@@ -235,7 +262,18 @@ function App() {
   /* Ad-blocker listener */
   useEffect(() => {
     if (!window.browserAPI?.onAdBlocked) return;
-    window.browserAPI.onAdBlocked((count) => setBlockedCount(count));
+    const unsub = window.browserAPI.onAdBlocked((count) => setBlockedCount(count));
+    return () => unsub();
+  }, []);
+
+  // ── Web3 wallet connection request listener ──
+
+  useEffect(() => {
+    if (!window.browserAPI?.onWalletRequest) return;
+    const unsub = window.browserAPI.onWalletRequest((data) => {
+      setWalletRequest(data);
+    });
+    return () => unsub();
   }, []);
 
   // ── Keyboard shortcuts (Chrome-style) ──
@@ -385,11 +423,15 @@ function App() {
 
     // Always reuse the existing webview (it's kept alive via visibility:hidden)
     const wv = getActiveWebview();
-    if (wv) {
+    if (wv && isWebviewReady(wv)) {
       if (leavingInternal) {
         try { wv.clearHistory(); } catch (e) { }
       }
       wv.loadURL(finalUrl);
+    } else if (wv) {
+      // Webview exists but not ready — wait for dom-ready then load
+      const onReady = () => { wv.loadURL(finalUrl); };
+      wv.addEventListener('dom-ready', onReady, { once: true });
     } else {
       // Fallback: This should rarely happen now that we keep webviews alive
       initialUrls.current[activeTabId] = finalUrl;
@@ -401,7 +443,7 @@ function App() {
     const wv = getActiveWebview();
     const fromInternal = !!cameFromInternal.current[activeTabId];
 
-    if (wv && wv.canGoBack()) {
+    if (wv && isWebviewReady(wv) && wv.canGoBack()) {
       // Webview has real history — go back within the site
       wv.goBack();
     } else if (fromInternal) {
@@ -415,12 +457,12 @@ function App() {
 
   const handleForward = useCallback(() => {
     const wv = getActiveWebview();
-    if (wv && wv.canGoForward()) wv.goForward();
+    if (wv && isWebviewReady(wv) && wv.canGoForward()) wv.goForward();
   }, [getActiveWebview]);
 
   const handleReload = useCallback(() => {
     const wv = getActiveWebview();
-    if (wv) wv.reload();
+    if (wv && isWebviewReady(wv)) wv.reload();
   }, [getActiveWebview]);
 
   // ── Tab actions ──
@@ -558,6 +600,34 @@ function App() {
         updateTab(tabId, { isLoading: false });
       });
 
+      // ── Semantic Memory: silently scrape and ingest page content ──
+      wv.addEventListener('did-finish-load', () => {
+        try {
+          const url = wv.getURL();
+          if (!url || url === 'about:blank' || url.startsWith('chrome://')) return;
+          wv.executeJavaScript(`
+            (function() {
+              try {
+                var t = document.title || '';
+                var b = (document.body && document.body.innerText) || '';
+                return JSON.stringify({ title: t, content: b.substring(0, 1500) });
+              } catch(e) { return '{}'; }
+            })()
+          `).then(raw => {
+            try {
+              const data = JSON.parse(raw || '{}');
+              if (data.content && data.content.length > 50) {
+                fetch('http://localhost:8000/api/memory/ingest', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ url, title: data.title || url, content: data.content }),
+                }).catch(() => {});
+              }
+            } catch {}
+          }).catch(() => {});
+        } catch {}
+      });
+
       wv.addEventListener('dom-ready', () => {
         // Force 125% scale by default for better readability
         try {
@@ -588,41 +658,53 @@ function App() {
     [updateTab]
   );
 
-  // Listen for Agent Navigation instructions
+  // Listen for Agent Navigation instructions — use refs to avoid resubscribing
+  const wcIdsRef = useRef(wcIds);
+  wcIdsRef.current = wcIds;
+  const handleNavigateRef = useRef(handleNavigate);
+  handleNavigateRef.current = handleNavigate;
+
   useEffect(() => {
-    if (window.browserAPI?.onAgentNavigate) {
-      const remove = window.browserAPI.onAgentNavigate(({ webContentsId, url }) => {
-        console.log('[App] Received agent-navigate:', url, webContentsId);
-        const tabIdStr = Object.keys(wcIds).find(key => wcIds[key] === webContentsId);
-        if (tabIdStr) {
-          const tabId = parseInt(tabIdStr);
-          if (tabId === activeTabId) {
-            handleNavigate(url);
-          } else {
-            updateTab(tabId, { url });
-            const wv = webviewRefs.current[tabId];
-            if (wv) wv.loadURL(url);
-          }
+    if (!window.browserAPI?.onAgentNavigate) return;
+    const unsub = window.browserAPI.onAgentNavigate(({ webContentsId, url }) => {
+      console.log('[App] Received agent-navigate:', url, webContentsId);
+      const currentWcIds = wcIdsRef.current;
+      const tabIdStr = Object.keys(currentWcIds).find(key => currentWcIds[key] === webContentsId);
+      if (tabIdStr) {
+        const tabId = parseInt(tabIdStr);
+        if (tabId === activeTabIdRef.current) {
+          handleNavigateRef.current(url);
         } else {
-          handleNavigate(url);
+          updateTab(tabId, { url });
+          const wv = webviewRefs.current[tabId];
+          if (wv && isWebviewReady(wv)) wv.loadURL(url);
         }
-      });
-      // Cleanup listener? `onAgentNavigate` returns void in preload?
-      // Preload: ipcRenderer.on returns event emitter.
-      // Actually preload implementation: `(callback) => ipcRenderer.on(...)`
-      // `ipcRenderer.on` returns the emitter, but it adds listener.
-      // To remove, we need `ipcRenderer.removeListener`.
-      // My preload doesn't return a cleanup function.
-      // It's okay for now, App component is mounted once.
-    }
-  }, [wcIds, activeTabId, handleNavigate]);
+      } else {
+        handleNavigateRef.current(url);
+      }
+    });
+    return () => unsub();
+  }, [updateTab]);
+
+  // Listen for executor's custom navigate event (when no webContentsId, e.g. New Tab page)
+  useEffect(() => {
+    const handleAgentNav = (e) => {
+      const url = e.detail?.url;
+      if (url) {
+        console.log('[App] onyx-agent-navigate custom event:', url);
+        handleNavigate(url);
+      }
+    };
+    window.addEventListener('onyx-agent-navigate', handleAgentNav);
+    return () => window.removeEventListener('onyx-agent-navigate', handleAgentNav);
+  }, [handleNavigate]);
 
   useEffect(() => {
     tabs.forEach((tab) => {
       const wv = webviewRefs.current[tab.id];
       if (wv) bindWebviewEvents(wv, tab.id);
     });
-  });
+  }, [tabs, bindWebviewEvents]);
 
   useEffect(() => {
     const wv = webviewRefs.current[activeTabId];
@@ -661,6 +743,7 @@ function App() {
         onToggleMenu={handleToggleMenu}
         onToggleAI={handleToggleAI}
         menuOpen={menuOpen}
+        aiOpen={aiOpen}
         tabCount={tabs.length}
         blockedCount={blockedCount}
         securityStatus={securityStatus}
@@ -705,32 +788,39 @@ function App() {
               {getInternalPage(activeTab.url) === 'newtab' && (
                 <HomePage onNavigate={handleNavigate} />
               )}
-              {!['history', 'newtab'].includes(getInternalPage(activeTab.url)) && (
+              {getInternalPage(activeTab.url) === 'ledger' && (
+                <OnyxLedger />
+              )}
+              {!['history', 'newtab', 'ledger'].includes(getInternalPage(activeTab.url)) && (
                 <div className="internal-page-unknown">
                   <p>Unknown page: {activeTab.url}</p>
                 </div>
               )}
             </div>
           )}
-          {tabs.map((tab) => (
-            <webview
-              key={`${tab.id}-${webviewGen[tab.id] || 0}`}
-              ref={(el) => { if (el) webviewRefs.current[tab.id] = el; }}
-              src={initialUrls.current[tab.id] || tab.url}
-              partition={isIncognito ? 'incognito' : 'persist:main'}
-              userAgent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-              className="browser-webview"
-              style={{
-                flex: tab.id === activeTabId ? 1 : undefined,
-                display: tab.id === activeTabId ? 'inline-flex' : 'none',
-                width: '100%',
-                height: '100%',
-                visibility: (tab.id === activeTabId && isInternalUrl(tab.url)) ? 'hidden' : 'visible',
-                position: (tab.id === activeTabId && isInternalUrl(tab.url)) ? 'absolute' : 'relative',
-                zIndex: (tab.id === activeTabId && isInternalUrl(tab.url)) ? -1 : 'auto',
-              }}
-            />
-          ))}
+          {tabs.map((tab) => {
+              const isActive = tab.id === activeTabId;
+              const isInternal = isActive && isInternalUrl(tab.url);
+              return (
+                <webview
+                  key={`${tab.id}-${webviewGen[tab.id] || 0}`}
+                  ref={(el) => { if (el) webviewRefs.current[tab.id] = el; }}
+                  src={initialUrls.current[tab.id] || tab.url}
+                  partition={isIncognito ? 'incognito' : 'persist:main'}
+                  preload={webviewPreloadPath || undefined}
+                  useragent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                  className="browser-webview"
+                  style={{
+                    position: isActive && !isInternal ? 'relative' : 'absolute',
+                    width: '100%',
+                    height: '100%',
+                    visibility: isActive && !isInternal ? 'visible' : 'hidden',
+                    zIndex: isActive && !isInternal ? 1 : -1,
+                    flex: isActive && !isInternal ? 1 : undefined,
+                  }}
+                />
+              );
+            })}
         </div>
       </div>
 
@@ -780,8 +870,17 @@ function App() {
 
           <div className="menu-divider" />
 
-          <button className="menu-nav-btn" onClick={() => { setMenuOpen(false); setAiOpen(!aiOpen); }} title="Onyx Intelligence">
-            <span style={{ fontSize: '16px' }}>✨</span>
+          <button className="menu-nav-btn ai-toggle-btn" onClick={() => { setMenuOpen(false); setAiOpen(!aiOpen); }} title="Onyx Intelligence">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M12 2C7.6 2 4 5.6 4 10c0 2.4 1 4.5 2.6 6H8v4h8v-4h1.4C19 14.5 20 12.4 20 10c0-4.4-3.6-8-8-8z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+              <g className="ai-brain-circuit">
+                <path d="M9 8c1.5 0 2 1 3 1s1.5-1 3-1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                <path d="M8.5 11c1.5 0 2.5 1 3.5 1s2-1 3.5-1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                <circle cx="10" cy="9.5" r="0.8" fill="currentColor" />
+                <circle cx="14" cy="9.5" r="0.8" fill="currentColor" />
+                <circle cx="12" cy="12" r="0.8" fill="currentColor" />
+              </g>
+            </svg>
             <span>Onyx AI</span>
           </button>
 
@@ -1024,6 +1123,23 @@ function App() {
       {aboutOpen && <AboutModal onClose={() => setAboutOpen(false)} />}
       {/* ── Settings Modal ── */}
       {settingsOpen && <SettingsModal onClose={() => { setSettingsOpen(false); if (window.browserAPI?.getSettings) { window.browserAPI.getSettings().then((s) => { if (s?.searchEngine) setSearchEngine(s.searchEngine); }); } }} />}
+
+      {/* ── Web3 Wallet Connection Modal ── */}
+      {walletRequest && (
+        <WalletModal
+          origin={walletRequest.origin}
+          onApprove={() => {
+            // Generate a deterministic stub address for this session
+            const stubAddress = '0x71C7656EC7ab88b098defB751B7401B5f6d8976F';
+            window.browserAPI?.sendWalletResponse({ approved: true, address: stubAddress });
+            setWalletRequest(null);
+          }}
+          onReject={() => {
+            window.browserAPI?.sendWalletResponse({ approved: false });
+            setWalletRequest(null);
+          }}
+        />
+      )}
     </div>
   );
 }

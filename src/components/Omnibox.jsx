@@ -17,28 +17,13 @@ function Omnibox({ currentUrl, isLoading, onNavigate, blockedCount, securityStat
         }
     }, [currentUrl]);
 
-    const isUrlLike = (text) => {
-        const t = text.trim();
-        if (/^https?:\/\//i.test(t)) return true;
-        if (/^[^\s]+\.[^\s]+$/.test(t)) return true;
-        return false;
-    };
-
-    const normalizeUrl = (raw) => {
-        const trimmed = raw.trim();
-        if (!trimmed) return '';
-        if (!isUrlLike(trimmed)) {
-            return `https://www.google.com/search?q=${encodeURIComponent(trimmed)}`;
-        }
-        if (!/^https?:\/\//i.test(trimmed)) return 'https://' + trimmed;
-        return trimmed;
-    };
-
     const handleKeyDown = (e) => {
         if (e.key === 'Enter') {
-            const normalized = normalizeUrl(inputRef.current.value);
-            if (normalized) {
-                onNavigate(normalized);
+            const raw = inputRef.current.value.trim();
+            if (raw) {
+                // Pass raw input to App's handleNavigate which handles
+                // URL detection, search engine routing, and https:// prepending
+                onNavigate(raw);
                 inputRef.current.blur();
             }
         }

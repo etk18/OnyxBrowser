@@ -9,7 +9,11 @@ import { useState, useEffect, useRef } from 'react';
 //  Get a FREE project ID at: https://cloud.walletconnect.com
 //  Replace 'YOUR_PROJECT_ID' with your actual project ID.
 // ─────────────────────────────────────────────────────────────
-const projectId = 'YOUR_PROJECT_ID';
+const projectId = import.meta.env.VITE_WALLETCONNECT_PROJECT_ID || '';
+
+if (!projectId) {
+    console.warn('[Web3Modal] No projectId configured. Set VITE_WALLETCONNECT_PROJECT_ID in .env or get one free at https://cloud.walletconnect.com');
+}
 
 const mainnet = {
     chainId: 1,
@@ -42,28 +46,54 @@ const metadata = {
     icons: ['https://avatars.githubusercontent.com/u/37784886'],
 };
 
-// Initialize Web3Modal once at module level
-createWeb3Modal({
-    ethersConfig: defaultConfig({ metadata }),
-    chains: [mainnet, sepolia, polygon],
-    projectId,
-    enableAnalytics: false,
-    themeMode: 'dark',
-    themeVariables: {
-        '--w3m-accent': '#00f2ea',
-        '--w3m-color-mix': '#050505',
-        '--w3m-color-mix-strength': 40,
-        '--w3m-border-radius-master': '2px',
-    },
-});
+// Only initialize Web3Modal if a valid projectId is present
+if (projectId) {
+    try {
+        createWeb3Modal({
+            ethersConfig: defaultConfig({ metadata }),
+            chains: [mainnet, sepolia, polygon],
+            projectId,
+            enableAnalytics: false,
+            themeMode: 'dark',
+            themeVariables: {
+                '--w3m-accent': '#00f2ea',
+                '--w3m-color-mix': '#050505',
+                '--w3m-color-mix-strength': 40,
+                '--w3m-border-radius-master': '2px',
+            },
+        });
+    } catch (e) {
+        console.error('[Web3Modal] Initialization failed:', e.message);
+    }
+}
 
 /**
- * useWallet — WalletConnect-powered wallet hook.
+ * useWalletDisabled — static no-op hook for when Web3Modal is not initialized.
+ * No hooks called, returns stable disabled state.
+ */
+function useWalletDisabled() {
+    return {
+        account: null,
+        shortAddress: null,
+        balance: null,
+        ensName: null,
+        chainId: null,
+        chainName: null,
+        error: 'Web3 disabled — no WalletConnect projectId configured.',
+        connecting: false,
+        isConnected: false,
+        connect: async () => { console.warn('[Web3] Cannot connect: no projectId.'); },
+        disconnect: async () => {},
+    };
+}
+
+/**
+ * useWalletEnabled — WalletConnect-powered wallet hook.
  *
  * Uses Web3Modal for connection (QR code, mobile wallets, injected).
  * Fetches balance + ENS via ethers.js BrowserProvider after connection.
  */
-export function useWallet() {
+function useWalletEnabled() {
     const { open } = useWeb3Modal();
     const { address, chainId, isConnected } = useWeb3ModalAccount();
     const { walletProvider } = useWeb3ModalProvider();
@@ -158,3 +188,7 @@ export function useWallet() {
         disconnect,
     };
 }
+
+// Resolved once at module load — stable function reference, no conditional hook calls.
+// projectId is a build-time constant so this never changes between renders.
+export const useWallet = projectId ? useWalletEnabled : useWalletDisabled;

@@ -1,15 +1,16 @@
 {
   "name": "onyx-browser",
-  "version": "1.0.0",
+  "version": "0.1.0-beta",
   "description": "The High-Performance Agentic Browser.",
   "main": "electron/main.js",
   "scripts": {
     "dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && ELECTRON_RUN_AS_NODE= electron .\"",
     "build": "vite build",
     "postinstall": "electron-builder install-app-deps && chmod +x node_modules/app-builder-bin/mac/app-builder_arm64",
-    "build:win": "npm run build && electron-builder --win --x64 -p never",
-    "build:mac": "npm run build && electron-builder --mac --arm64",
-    "dist": "npm run build && electron-builder --mac --arm64 && electron-builder --win --x64 -p never",
+    "build:shield": "cd onyx-shield && npm install && npm run build && cd ..",
+    "build:win": "npm run build:shield && npm run build && electron-builder --win --x64 --publish always",
+    "build:mac": "npm run build:shield && npm run build && electron-builder --mac --arm64 --publish always",
+    "dist": "npm run build:shield && npm run build && electron-builder --mac --arm64 --publish always && electron-builder --win --x64 --publish always",
     "preview": "vite preview"
   },
   "author": "Eesh Sagar",
@@ -75,6 +76,12 @@
       "uninstallDisplayName": "OnyxBrowser",
       "artifactName": "${productName}-Setup-${version}.${ext}"
     },
+    "protocols": [
+      {
+        "name": "Onyx Protocol",
+        "schemes": ["onyx"]
+      }
+    ],
     "mac": {
       "target": "dmg",
       "icon": "assets/icon.icns",

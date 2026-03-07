@@ -12,6 +12,13 @@ coverage
 dist
 release
 
+# Runtime databases
+backend/chroma_db
+
+# Rust build artifacts
+onyx-shield/target
+onyx-shield/node_modules
+
 # Misc
 .DS_Store
 .env

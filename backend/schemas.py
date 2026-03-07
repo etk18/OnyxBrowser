@@ -46,7 +46,7 @@ class AgentActionResponse(BaseModel):
     )
     tool: str = Field(
         ...,
-        description="Tool to invoke: navigate | click | type | scroll | scrape | answer.",
+        description="Tool to invoke: navigate | click | type | keypress | scroll | scrape | answer.",
     )
     params: dict = Field(
         default_factory=dict,
@@ -62,3 +62,23 @@ class VoiceCommandResponse(BaseModel):
         default="",
         description="The action derived from the transcript (populated by future NLU pipeline).",
     )
+
+
+class VoiceTranscriptResponse(BaseModel):
+    """Whisper transcription result from uploaded audio."""
+
+    transcript: str = Field(
+        default="",
+        description="Transcribed text from the user's voice recording.",
+    )
+
+
+# ── Memory Models ──────────────────────────────────────────────
+
+
+class MemoryIngestRequest(BaseModel):
+    """Payload sent by the frontend scraper to ingest page content."""
+
+    url: str = Field(..., min_length=1, description="The page URL.")
+    title: str = Field(default="", description="The page title.")
+    content: str = Field(..., min_length=1, description="Truncated body text of the page.")

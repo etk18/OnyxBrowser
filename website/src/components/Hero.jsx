@@ -28,19 +28,20 @@ export default function Hero() {
         <section className="container hero" id="hero">
             <div className="hero-content">
                 <motion.div className="hero-badge" {...fadeUp(0)}>
-                    ⚡ AI-Powered Desktop Browser
+                    ⚡ Public Beta v0.1.0
                 </motion.div>
                 <motion.h1 className="hero-title" {...fadeUp(0.1)}>
-                    Browse the Web with{' '}
-                    <span className="gradient-text">Autonomous Intelligence</span>
+                    The Agentic{' '}
+                    <span className="gradient-text">Web Engine</span>
                 </motion.h1>
                 <motion.p className="hero-sub" {...fadeUp(0.2)}>
-                    OnyxBrowser is a full-featured Electron browser supercharged with an AI agent
-                    that can navigate, click, type, and summarise web pages — just by telling it what to do.
+                    Onyx doesn't just automate pre-programmed tasks; it understands your intent.
+                    Powered by Llama 3 and LangChain, the Onyx Intelligence engine dynamically reads
+                    the DOM, reasons through complex workflows, and executes contextual actions on the fly.
                 </motion.p>
                 <motion.div className="hero-buttons" {...fadeUp(0.3)}>
                     <a href="#download" className="btn btn-primary">
-                        <DownloadIcon /> Download Now
+                        <DownloadIcon /> Download Beta v0.1.0
                     </a>
                     <a
                         href="https://github.com/etk18/OnyxBrowser"

@@ -1,15 +1,14 @@
 /**
- * Onyx Intelligence — OpenRouter Gateway (Gemma 3 27B)
+ * Onyx Intelligence — Groq Gateway (Onyx Lite fallback)
  *
  * Routes API calls through Electron's main process IPC
  * to bypass CORS and provide reliable connectivity.
  *
- * Model: google/gemma-3-27b-it:free
- * Context: 131k tokens | Output: 8,192 tokens
+ * Primary model: llama-3.3-70b-versatile (Groq)
  */
 
 /**
- * Strips markdown code fences from Gemma's JSON output.
+ * Strips markdown code fences from LLM JSON output.
  */
 function cleanModelOutput(text) {
     if (!text) return text;
@@ -30,19 +29,19 @@ export async function askOnyx(messages, jsonMode = false) {
     // Try secure electron-store first, fallback to localStorage
     let apiKey;
     if (window.browserAPI?.getApiKey) {
-        apiKey = await window.browserAPI.getApiKey('openrouter');
+        apiKey = await window.browserAPI.getApiKey('groq');
     }
     if (!apiKey) {
-        apiKey = localStorage.getItem('onyx_openrouter_key');
+        apiKey = localStorage.getItem('onyx_groq_key');
     }
-    if (!apiKey) throw new Error("OpenRouter API Key is missing. Please add it in Settings.");
+    if (!apiKey) throw new Error("Groq API Key is missing. Please add it in Settings.");
 
     try {
         // Route through main process IPC to bypass CORS
-        const result = await window.browserAPI.openrouterChat(apiKey, messages);
+        const result = await window.browserAPI.groqChat(apiKey, messages);
 
         if (result.error) {
-            console.error("OpenRouter Error:", result.error, result.details || '');
+            console.error("Groq Error:", result.error, result.details || '');
             if (jsonMode) {
                 return JSON.stringify({ tool: "answer", params: { text: "AI Error: " + result.error } });
             }
@@ -51,7 +50,7 @@ export async function askOnyx(messages, jsonMode = false) {
 
         let content = result.content;
 
-        // Clean markdown fences from Gemma output when expecting JSON
+        // Clean markdown fences from LLM output when expecting JSON
         if (jsonMode && content) {
             content = cleanModelOutput(content);
         }

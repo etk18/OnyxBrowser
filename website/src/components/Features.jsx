@@ -1,12 +1,12 @@
 import { motion } from 'framer-motion'
 
 const FEATURES = [
-    { icon: '🤖', title: 'Autonomous AI Agent', desc: 'Tell Onyx what to do in plain English. It navigates, clicks, types, and extracts data — fully autonomous 5-step ReAct reasoning loop.' },
-    { icon: '🎤', title: 'Voice Commands', desc: 'Click the mic and speak. Your command is auto-transcribed and executed instantly — no typing required.' },
-    { icon: '🧠', title: 'LangChain Brain', desc: 'Powered by a FastAPI + LangChain backend with structured Pydantic output. Supports Groq (Llama 3.3 70B) and OpenAI.' },
-    { icon: '🛡️', title: 'Built-in Ad Blocker', desc: 'Cliqz-powered ad and tracker blocking out of the box. See the blocked count update in real-time.' },
-    { icon: '🔗', title: 'Web3 Ready', desc: 'Integrated Ethereum wallet panel with Web3Modal + ethers.js. Connect your wallet and interact with dApps natively.' },
-    { icon: '🔒', title: 'Security First', desc: 'nodeIntegration off, contextIsolation on, asar-packed source. API keys stored securely in the OS user-data directory.' },
+    { icon: '🤖', title: 'Agentic AI Core', desc: 'Give it a goal, and let it think. Onyx autonomously navigates, types, and clicks, adapting to website changes in real-time without rigid scripts.' },
+    { icon: '🎤', title: 'Zero-Latency Voice', desc: 'MediaRecorder captures your voice natively. Audio is transcribed server-side by Groq Whisper (whisper-large-v3-turbo) in real time — no typing needed.' },
+    { icon: '🧠', title: 'Groq + LangChain Brain', desc: 'FastAPI backend powered by Groq Llama 3.3 70B (primary) with OpenAI GPT-4o-mini fallback. Structured Pydantic output ensures reliable action plans.' },
+    { icon: '🛡️', title: 'Built-in Ad Blocker', desc: 'Cliqz-powered ad and tracker blocking out of the box. See the blocked count update in real-time on every page.' },
+    { icon: '🔗', title: 'Native Web3 Integration', desc: 'Integrated Ethereum wallet panel with Web3Modal + ethers.js. Connect your wallet and interact with dApps without leaving the browser.' },
+    { icon: '🔒', title: 'Security First', desc: 'nodeIntegration off, contextIsolation on, asar-packed source. API keys stored securely in the OS user-data directory — never bundled.' },
 ]
 
 const cardVariants = {

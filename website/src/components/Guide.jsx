@@ -8,13 +8,13 @@ const STEPS = [
     },
     {
         num: 2,
-        title: 'Get an OpenRouter API Key',
-        body: <>The AI agent requires an API key to function. Visit <a href="https://openrouter.ai" target="_blank" rel="noopener">openrouter.ai</a>, create a free account, and copy your API key.</>,
+        title: 'Get a Groq API Key (free)',
+        body: <>The AI agent and voice transcription run on Groq. Visit <a href="https://console.groq.com" target="_blank" rel="noopener">console.groq.com</a>, create a free account, and copy your API key. OpenAI is supported as a fallback.</>,
     },
     {
         num: 3,
-        title: 'Paste Key in Settings',
-        body: <>Open OnyxBrowser → click <strong>⚙️ Settings</strong> in the top menu → paste your OpenRouter API Key → click <strong>Save</strong>. You're ready to go!</>,
+        title: 'Add Your Key to the Backend',
+        body: <>Navigate to the <code>backend/</code> folder, copy <code>.env.example</code> to <code>.env</code>, and paste your Groq API key. Start the backend with <code>uvicorn main:app</code> — you're ready to go!</>,
     },
 ]
 
@@ -64,7 +64,7 @@ export default function Guide() {
             >
                 <span className="tip-icon">💡</span>
                 <div>
-                    <strong>Pro Tip:</strong> Once your key is saved, open the AI sidebar (⚡ icon) and try:{' '}
+                    <strong>Pro Tip:</strong> Once your backend is running, open the AI sidebar (brain icon in the toolbar) and try:{' '}
                     <em>"Open YouTube and search for lofi music"</em> — watch Onyx navigate autonomously!
                 </div>
             </motion.div>

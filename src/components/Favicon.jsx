@@ -10,6 +10,9 @@ import React, { useState, useEffect, useMemo } from 'react';
 
 function Favicon({ url, size = 24 }) {
     const { hostname, origin, letter } = useMemo(() => {
+        if (!url || url === 'newtab' || /^onyx:\/\//i.test(url) || url === 'about:blank') {
+            return { hostname: '', origin: '', letter: '◎' };
+        }
         try {
             const parsed = new URL(url);
             return {

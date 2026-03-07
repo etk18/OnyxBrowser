@@ -17,18 +17,26 @@ contextBridge.exposeInMainWorld('browserAPI', {
   addBookmark: (url, title) => ipcRenderer.invoke('add-bookmark', url, title),
   removeBookmark: (url) => ipcRenderer.invoke('remove-bookmark', url),
 
-  // Downloads (events from main process)
+  // Downloads (events from main process) — each returns a cleanup function
   onDownloadStarted: (callback) => {
-    ipcRenderer.on('download-started', (_event, data) => callback(data));
+    const handler = (_event, data) => callback(data);
+    ipcRenderer.on('download-started', handler);
+    return () => ipcRenderer.removeListener('download-started', handler);
   },
   onDownloadProgress: (callback) => {
-    ipcRenderer.on('download-progress', (_event, data) => callback(data));
+    const handler = (_event, data) => callback(data);
+    ipcRenderer.on('download-progress', handler);
+    return () => ipcRenderer.removeListener('download-progress', handler);
   },
   onDownloadComplete: (callback) => {
-    ipcRenderer.on('download-complete', (_event, data) => callback(data));
+    const handler = (_event, data) => callback(data);
+    ipcRenderer.on('download-complete', handler);
+    return () => ipcRenderer.removeListener('download-complete', handler);
   },
   onDownloadPaused: (callback) => {
-    ipcRenderer.on('download-paused', (_event, data) => callback(data));
+    const handler = (_event, data) => callback(data);
+    ipcRenderer.on('download-paused', handler);
+    return () => ipcRenderer.removeListener('download-paused', handler);
   },
 
   // Download controls
@@ -41,16 +49,25 @@ contextBridge.exposeInMainWorld('browserAPI', {
   setSetting: (key, value) => ipcRenderer.invoke('set-setting', key, value),
   clearCache: () => ipcRenderer.invoke('clear-cache'),
 
+  // Extensions
+  loadExtension: () => ipcRenderer.invoke('load-extension'),
+  getExtensions: () => ipcRenderer.invoke('get-extensions'),
+  removeExtension: (id) => ipcRenderer.invoke('remove-extension', id),
+
   // New Tab from context menu
   onNewTab: (callback) => {
-    ipcRenderer.on('new-tab', (_event, url) => callback(url));
+    const handler = (_event, url) => callback(url);
+    ipcRenderer.on('new-tab', handler);
+    return () => ipcRenderer.removeListener('new-tab', handler);
   },
 
   // Ad-Blocker
   getBlockedCount: () => ipcRenderer.invoke('get-blocked-count'),
   resetBlockedCount: () => ipcRenderer.invoke('reset-blocked-count'),
   onAdBlocked: (callback) => {
-    ipcRenderer.on('ad-blocked', (_event, count) => callback(count));
+    const handler = (_event, count) => callback(count);
+    ipcRenderer.on('ad-blocked', handler);
+    return () => ipcRenderer.removeListener('ad-blocked', handler);
   },
 
   // Session Restore
@@ -59,7 +76,9 @@ contextBridge.exposeInMainWorld('browserAPI', {
 
   // Security
   onSecurityStatus: (callback) => {
-    ipcRenderer.on('security-status', (_event, data) => callback(data));
+    const handler = (_event, data) => callback(data);
+    ipcRenderer.on('security-status', handler);
+    return () => ipcRenderer.removeListener('security-status', handler);
   },
   getCertDetails: (webContentsId) => ipcRenderer.invoke('get-cert-details', webContentsId),
 
@@ -68,7 +87,9 @@ contextBridge.exposeInMainWorld('browserAPI', {
 
   // Audio
   onTabAudioState: (callback) => {
-    ipcRenderer.on('tab-audio-state', (_event, data) => callback(data));
+    const handler = (_event, data) => callback(data);
+    ipcRenderer.on('tab-audio-state', handler);
+    return () => ipcRenderer.removeListener('tab-audio-state', handler);
   },
   toggleMute: (webContentsId) => ipcRenderer.invoke('toggle-mute', webContentsId),
 
@@ -77,14 +98,29 @@ contextBridge.exposeInMainWorld('browserAPI', {
 
   // Agent
   performAgentAction: (webContentsId, command) => ipcRenderer.invoke('perform-agent-action', webContentsId, command),
-  onAgentNavigate: (callback) => ipcRenderer.on('agent-navigate', (_event, data) => callback(data)),
+  onAgentNavigate: (callback) => {
+    const handler = (_event, data) => callback(data);
+    ipcRenderer.on('agent-navigate', handler);
+    return () => ipcRenderer.removeListener('agent-navigate', handler);
+  },
 
-  // OpenRouter AI Proxy
-  openrouterChat: (apiKey, messages) => ipcRenderer.invoke('openrouter-chat', apiKey, messages),
+  // Groq AI Proxy
+  groqChat: (apiKey, messages) => ipcRenderer.invoke('groq-chat', apiKey, messages),
 
   // Secure API Key Storage (via electron-store in userData)
   getApiKey: (provider) => ipcRenderer.invoke('get-api-key', provider),
   setApiKey: (provider, key) => ipcRenderer.invoke('set-api-key', provider, key),
   getAllApiKeys: () => ipcRenderer.invoke('get-all-api-keys'),
   getUserDataPath: () => ipcRenderer.invoke('get-user-data-path'),
+
+  // Web3 Provider
+  getWebviewPreloadPath: () => ipcRenderer.invoke('get-webview-preload-path'),
+
+  // Web3 Wallet Connection
+  onWalletRequest: (callback) => {
+    const handler = (_event, data) => callback(data);
+    ipcRenderer.on('wallet-connection-request', handler);
+    return () => ipcRenderer.removeListener('wallet-connection-request', handler);
+  },
+  sendWalletResponse: (response) => ipcRenderer.invoke('wallet-connection-response', response),
 });

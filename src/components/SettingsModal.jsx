@@ -20,6 +20,9 @@ export default function SettingsModal({ onClose }) {
     const [saved, setSaved] = useState(false);
     const [clearing, setClearing] = useState(false);
     const [cleared, setCleared] = useState(false);
+    const [extensions, setExtensions] = useState([]);
+    const [extLoading, setExtLoading] = useState(false);
+    const [extError, setExtError] = useState(null);
 
     useEffect(() => {
         if (window.browserAPI?.getSettings) {
@@ -29,12 +32,24 @@ export default function SettingsModal({ onClose }) {
         }
         // Load API key from secure electron-store
         if (window.browserAPI?.getApiKey) {
-            window.browserAPI.getApiKey('openrouter').then((key) => {
+            window.browserAPI.getApiKey('groq').then((key) => {
                 setApiKey(key || '');
             });
         } else {
             // Fallback for dev mode without preload
-            setApiKey(localStorage.getItem('onyx_openrouter_key') || '');
+            setApiKey(localStorage.getItem('onyx_groq_key') || '');
+        }
+
+        // Migrate old OpenRouter key from localStorage
+        const oldKey = localStorage.getItem('onyx_openrouter_key');
+        if (oldKey) {
+            localStorage.removeItem('onyx_openrouter_key');
+            alert('OnyxBrowser now uses Groq instead of OpenRouter. Please re-enter your Groq API Key in Settings.');
+        }
+
+        // Load installed extensions
+        if (window.browserAPI?.getExtensions) {
+            window.browserAPI.getExtensions().then(setExtensions);
         }
     }, []);
 
@@ -48,13 +63,13 @@ export default function SettingsModal({ onClose }) {
     const handleSave = () => {
         // Save API key to secure electron-store
         if (window.browserAPI?.setApiKey) {
-            window.browserAPI.setApiKey('openrouter', apiKey.trim());
+            window.browserAPI.setApiKey('groq', apiKey.trim());
         }
         // Also keep in localStorage as fallback for ai.js in dev
         if (apiKey.trim()) {
-            localStorage.setItem('onyx_openrouter_key', apiKey.trim());
+            localStorage.setItem('onyx_groq_key', apiKey.trim());
         } else {
-            localStorage.removeItem('onyx_openrouter_key');
+            localStorage.removeItem('onyx_groq_key');
         }
         // Save settings via IPC
         if (window.browserAPI?.setSetting) {
@@ -75,6 +90,29 @@ export default function SettingsModal({ onClose }) {
         setClearing(false);
         setCleared(true);
         setTimeout(() => setCleared(false), 2500);
+    };
+
+    const handleLoadExtension = async () => {
+        if (!window.browserAPI?.loadExtension) return;
+        setExtLoading(true);
+        setExtError(null);
+        const result = await window.browserAPI.loadExtension();
+        setExtLoading(false);
+        if (result?.canceled) return;
+        if (result?.ok) {
+            // Refresh the list
+            const updated = await window.browserAPI.getExtensions();
+            setExtensions(updated);
+        } else {
+            setExtError(result?.error || 'Failed to load extension');
+        }
+    };
+
+    const handleRemoveExtension = async (id) => {
+        if (!window.browserAPI?.removeExtension) return;
+        await window.browserAPI.removeExtension(id);
+        const updated = await window.browserAPI.getExtensions();
+        setExtensions(updated);
     };
 
     return (
@@ -118,12 +156,12 @@ export default function SettingsModal({ onClose }) {
 
                 {/* AI API Key */}
                 <div className="settings-group">
-                    <label className="settings-label">OpenRouter API Key</label>
+                    <label className="settings-label">Groq API Key</label>
                     <div className="settings-key-row">
                         <input
                             type={showKey ? 'text' : 'password'}
                             className="settings-input"
-                            placeholder="sk-or-v1..."
+                            placeholder="gsk_..."
                             value={apiKey}
                             onChange={(e) => setApiKey(e.target.value)}
                         />
@@ -136,7 +174,7 @@ export default function SettingsModal({ onClose }) {
                         </button>
                     </div>
                     <p className="settings-hint">
-                        Get a free key at <strong>openrouter.ai</strong> — powers Onyx Agent.
+                        Get a free key at <strong>console.groq.com</strong> — powers Onyx Agent & Voice.
                     </p>
                 </div>
 
@@ -164,7 +202,38 @@ export default function SettingsModal({ onClose }) {
                     </button>
                 </div>
 
+                {/* Extensions */}
+                <div className="settings-group">
+                    <label className="settings-label">Extensions</label>
+                    <button
+                        className="settings-ext-btn"
+                        onClick={handleLoadExtension}
+                        disabled={extLoading}
+                    >
+                        {extLoading ? 'Loading…' : 'Load Unpacked Extension'}
+                    </button>
+                    {extError && <p className="settings-ext-error">{extError}</p>}
+                    {extensions.length > 0 && (
+                        <ul className="settings-ext-list">
+                            {extensions.map((ext) => (
+                                <li key={ext.id} className="settings-ext-item">
+                                    <span className="settings-ext-name">{ext.name}</span>
+                                    <span className="settings-ext-id">{ext.id}</span>
+                                    <button
+                                        className="settings-ext-remove"
+                                        onClick={() => handleRemoveExtension(ext.id)}
+                                        title="Remove extension"
+                                    >
+                                        <svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M3 3L11 11M11 3L3 11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>
+                                    </button>
+                                </li>
+                            ))}
+                        </ul>
+                    )}
+                </div>
+
                 {/* Footer: Save & Cancel */}
+                <div className="settings-version">OnyxBrowser | Public Beta v0.1.0</div>
                 <div className="settings-footer">
                     <button className="settings-cancel-btn" onClick={onClose}>
                         Cancel

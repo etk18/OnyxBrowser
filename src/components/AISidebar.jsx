@@ -14,7 +14,7 @@ import useVoiceCommand from '../hooks/useVoiceCommand';
  *
  * 2. "Onyx Lite" — Fallback to the in-process ReAct loop (agent.js)
  *    ↳ Used when backend is unavailable or for simple page questions
- *    ↳ Routes directly through OpenRouter / Gemma
+ *    ↳ Routes directly through Groq / Llama 3
  *
  * Props:
  * - isOpen: boolean
@@ -378,6 +378,8 @@ export default function AISidebar({ isOpen, onClose, currentWebContentsId, curre
                     </>
                 )}
             </div>
+
+            <div className="ai-sidebar-version">v0.1.0-beta</div>
         </div>
     );
 }

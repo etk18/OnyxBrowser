@@ -39,16 +39,18 @@ export async function requestAgentAction(prompt, currentUrl) {
 /**
  * POST /api/agent/voice
  *
- * Sends an audio transcript for future NLU processing.
+ * Sends recorded audio (WebM blob) to the backend for Whisper transcription.
  *
- * @param {string} transcript — Transcribed voice input
- * @returns {Promise<{status: string, interpreted_action: string}>}
+ * @param {Blob} audioBlob — WebM audio from MediaRecorder
+ * @returns {Promise<{transcript: string}>}
  */
-export async function sendVoiceCommand(transcript) {
+export async function sendVoiceAudio(audioBlob) {
+    const formData = new FormData();
+    formData.append('file', audioBlob, 'recording.webm');
+
     const res = await fetch(`${BACKEND_URL}/api/agent/voice`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ audio_transcript: transcript }),
+        body: formData,
     });
 
     if (!res.ok) {

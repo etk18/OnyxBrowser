@@ -58,7 +58,7 @@ export default function HomePage({ onNavigate }) {
             <div className="homepage-content">
                 {/* Brand */}
                 <h1 className="homepage-brand">ONYX</h1>
-                <p className="homepage-subtitle">The Agentic Browser</p>
+                <p className="homepage-subtitle">Onyx Intelligence | Public Beta</p>
 
                 {/* Search Bar */}
                 <form className="homepage-search-form" onSubmit={handleSubmit}>
@@ -112,7 +112,13 @@ export default function HomePage({ onNavigate }) {
 
             {/* Footer */}
             <div className="homepage-footer">
-                <span>Onyx Browser — Built for the future</span>
+                <button className="homepage-whatsnew" onClick={() => onNavigate('onyx://ledger')}>
+                    <span className="homepage-whatsnew-dot" />
+                    What's New in v0.1.0
+                </button>
+                <div style={{ marginTop: 8 }}>
+                    <span>OnyxBrowser | Public Beta v0.1.0</span>
+                </div>
             </div>
         </div>
     );

@@ -1,7 +1,18 @@
-const { app, BrowserWindow, Menu, ipcMain, session } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, session, dialog } = require('electron');
 const path = require('path');
 const { ElectronBlocker } = require('@cliqz/adblocker-electron');
+const { Request: AdblockerRequest } = require('@cliqz/adblocker');
 const fetch = require('cross-fetch');
+
+// ── Rust-powered Onyx Shield Engine (NAPI-RS) ──
+let rustShield = null;
+try {
+  const { ShieldEngine } = require('../onyx-shield');
+  rustShield = new ShieldEngine();
+  console.log(`[OnyxShield] Rust engine loaded — ${rustShield.domainCount()} domains in HashSet`);
+} catch (e) {
+  console.warn('[OnyxShield] Rust native module not available, falling back to Cliqz only:', e.message);
+}
 
 // ── Application Menu: Enable system shortcuts (Cmd+C/V/X) ──
 // Without this, Electron strips all standard Edit shortcuts.
@@ -69,6 +80,7 @@ let mainWindow = null;
 let store = null;
 let blocker = null;
 let blockedCount = 0;
+let shieldEnabled = true; // Toggled by user settings
 let downloadItems = new Map();
 let nextDownloadId = 1;
 
@@ -122,7 +134,6 @@ async function initStore() {
         type: 'object',
         default: {},
         properties: {
-          openrouter: { type: 'string', default: '' },
           groq: { type: 'string', default: '' },
           openai: { type: 'string', default: '' },
         },
@@ -137,7 +148,7 @@ function createWindow() {
     height: 800,
     autoHideMenuBar: true,
     backgroundColor: '#1E1E1E',
-    title: 'Onyx',
+    title: 'OnyxBrowser | Public Beta v0.1.0',
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: { x: 16, y: 16 },
     webPreferences: {
@@ -146,6 +157,25 @@ function createWindow() {
       contextIsolation: true,
       preload: path.join(__dirname, 'preload.js'),
     },
+  });
+
+  // ── Webview security: validate preload paths ──
+  const allowedPreload = path.resolve(__dirname, 'webview-preload.js');
+  mainWindow.webContents.on('will-attach-webview', (_event, webPreferences) => {
+    // Normalize: Electron may pass the path with or without file:// prefix
+    const incomingPreload = (webPreferences.preload || '')
+      .replace(/^file:\/\//, '');
+
+    if (incomingPreload && path.resolve(incomingPreload) !== allowedPreload) {
+      console.warn('[Security] Blocked unauthorized webview preload:', webPreferences.preload);
+      delete webPreferences.preload;
+    } else if (!incomingPreload) {
+      // No preload set — inject ours for Web3 support
+      webPreferences.preload = allowedPreload;
+    }
+    // Lock down webview security
+    webPreferences.nodeIntegration = false;
+    webPreferences.contextIsolation = true;
   });
 
   // In dev, load from Vite dev server; in prod, load built files
@@ -444,15 +474,10 @@ ipcMain.handle('get-settings', () => {
 ipcMain.handle('set-setting', (_event, key, value) => {
   if (!store) return;
   store.set(key, value);
-  // If ad-blocker toggled, enable/disable it
-  if (key === 'adBlock' && blocker) {
-    if (value) {
-      blocker.enableBlockingInSession(session.defaultSession);
-      console.log('[AdBlocker] Re-enabled');
-    } else {
-      blocker.disableBlockingInSession(session.defaultSession);
-      console.log('[AdBlocker] Disabled');
-    }
+  // If ad-blocker toggled, flip the unified shield flag
+  if (key === 'adBlock') {
+    shieldEnabled = !!value;
+    console.log(`[OnyxShield] ${shieldEnabled ? 'Enabled' : 'Disabled'} by user`);
   }
 });
 
@@ -464,6 +489,49 @@ ipcMain.handle('clear-cache', async () => {
     return { ok: true };
   } catch (err) {
     console.error('[Settings] Clear cache failed:', err.message);
+    return { ok: false, error: err.message };
+  }
+});
+
+// ── Chrome Extension Loader (Developer Mode) ──
+
+ipcMain.handle('load-extension', async () => {
+  const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
+    title: 'Select Unpacked Extension Directory',
+    properties: ['openDirectory'],
+    buttonLabel: 'Load Extension',
+  });
+
+  if (canceled || filePaths.length === 0) return { canceled: true };
+
+  const extPath = filePaths[0];
+  try {
+    const ext = await session.defaultSession.loadExtension(extPath, { allowFileAccess: true });
+    console.log(`[Extensions] Loaded: ${ext.name} (${ext.id})`);
+    return { ok: true, extension: { id: ext.id, name: ext.name, version: ext.version, path: ext.path } };
+  } catch (err) {
+    console.error('[Extensions] Load failed:', err.message);
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle('get-extensions', () => {
+  const exts = session.defaultSession.getAllExtensions();
+  return exts.map((ext) => ({
+    id: ext.id,
+    name: ext.name,
+    version: ext.version,
+    path: ext.path,
+  }));
+});
+
+ipcMain.handle('remove-extension', (_event, extensionId) => {
+  try {
+    session.defaultSession.removeExtension(extensionId);
+    console.log(`[Extensions] Removed: ${extensionId}`);
+    return { ok: true };
+  } catch (err) {
+    console.error('[Extensions] Remove failed:', err.message);
     return { ok: false, error: err.message };
   }
 });
@@ -490,6 +558,100 @@ ipcMain.handle('get-user-data-path', () => {
   return app.getPath('userData');
 });
 
+// ── Web3 Provider: Preload path for webview injection ──
+
+ipcMain.handle('get-webview-preload-path', () => {
+  return 'file://' + path.resolve(__dirname, 'webview-preload.js');
+});
+
+// ── Web3 Provider: RPC request router ──
+
+// Pending wallet connection requests awaiting user approval
+let pendingWalletRequest = null;
+
+ipcMain.handle('web3-request', async (_event, args) => {
+  const { method, params } = args || {};
+  console.log(`[Web3] RPC request: ${method}`, params || []);
+
+  switch (method) {
+    // ── Account Methods ──
+    case 'eth_requestAccounts': {
+      // If already connected, return stored address immediately
+      const existing = store?.get('web3.selectedAddress', null);
+      if (existing) return [existing];
+
+      // Prompt user for approval via the React frontend
+      if (!mainWindow || mainWindow.isDestroyed()) {
+        throw { code: 4001, message: 'No browser window available.' };
+      }
+
+      // Extract the requesting origin from the sender
+      let origin = 'Unknown dApp';
+      try {
+        const sender = _event.sender;
+        origin = sender.getURL() || origin;
+        const parsed = new URL(origin);
+        origin = parsed.origin;
+      } catch { /* keep default */ }
+
+      return new Promise((resolve, reject) => {
+        pendingWalletRequest = { resolve, reject };
+        mainWindow.webContents.send('wallet-connection-request', { origin });
+      });
+    }
+
+    case 'eth_accounts': {
+      const address = store?.get('web3.selectedAddress', null);
+      return address ? [address] : [];
+    }
+
+    // ── Chain Methods ──
+    case 'eth_chainId':
+      return store?.get('web3.chainId', '0x1') || '0x1';
+
+    case 'net_version':
+      return store?.get('web3.networkVersion', '1') || '1';
+
+    // ── Signing (stub — forward to wallet later) ──
+    case 'personal_sign':
+    case 'eth_sign':
+    case 'eth_signTypedData':
+    case 'eth_signTypedData_v3':
+    case 'eth_signTypedData_v4':
+      console.log(`[Web3] Signing request: ${method}`, params);
+      throw { code: 4001, message: 'User rejected the request.' };
+
+    // ── Wallet Metadata ──
+    case 'wallet_requestPermissions':
+      return [{ parentCapability: 'eth_accounts' }];
+
+    case 'wallet_getPermissions':
+      return [{ parentCapability: 'eth_accounts' }];
+
+    // ── Default: Forward to an RPC node later ──
+    default:
+      console.log(`[Web3] Unhandled method: ${method}`);
+      throw { code: -32601, message: `Method ${method} not supported yet.` };
+  }
+});
+
+// ── Web3: Wallet connection response from UI ──
+
+ipcMain.handle('wallet-connection-response', (_event, { approved, address }) => {
+  if (!pendingWalletRequest) return;
+
+  if (approved && address) {
+    // Store the connected address
+    if (store) store.set('web3.selectedAddress', address);
+    console.log(`[Web3] User approved connection: ${address}`);
+    pendingWalletRequest.resolve([address]);
+  } else {
+    console.log('[Web3] User rejected connection');
+    pendingWalletRequest.reject({ code: 4001, message: 'User rejected the request.' });
+  }
+  pendingWalletRequest = null;
+});
+
 // ── AI Content Extraction ──
 
 ipcMain.handle('get-page-content', async (_event, webContentsId) => {
@@ -497,6 +659,9 @@ ipcMain.handle('get-page-content', async (_event, webContentsId) => {
     const { webContents } = require('electron');
     const wc = webContents.fromId(webContentsId);
     if (!wc) return '';
+
+    // Wait for DOM to be ready before extracting content
+    await waitForDomReady(wc);
 
     // Execute script in the renderer to get text content
     const content = await wc.executeJavaScript(`
@@ -694,6 +859,15 @@ const SMART_FIND_SCRIPT = `
   return { smartScrape, smartHighlight };
 })()`;
 
+/** Ensure webContents is ready for executeJavaScript — resolves immediately if loaded, else waits for dom-ready */
+function waitForDomReady(wc, timeoutMs = 10000) {
+  if (!wc.isLoading()) return Promise.resolve();
+  return new Promise((resolve) => {
+    const timer = setTimeout(resolve, timeoutMs);
+    wc.once('dom-ready', () => { clearTimeout(timer); resolve(); });
+  });
+}
+
 ipcMain.handle('perform-agent-action', async (_event, webContentsId, command) => {
   try {
     const { webContents } = require('electron');
@@ -702,6 +876,11 @@ ipcMain.handle('perform-agent-action', async (_event, webContentsId, command) =>
 
     const { tool, params } = command;
     const selector = (params.selector || params.target || '').replace(/\\/g, '\\\\').replace(/`/g, '\\`');
+
+    // For tools that execute JS in the page, wait until DOM is ready
+    if (tool !== 'navigate') {
+      await waitForDomReady(wc);
+    }
 
     if (tool === 'navigate') {
       let url = params.url || '';
@@ -732,6 +911,63 @@ ipcMain.handle('perform-agent-action', async (_event, webContentsId, command) =>
       }
     }
 
+    // ── Analyze UI: Spatial DOM Mapper ───────────────
+    else if (tool === 'analyze_ui') {
+      const result = await wc.executeJavaScript(`
+        (function onyxSpatialMap() {
+          try {
+            document.querySelectorAll('[data-onyx-id]').forEach(function(el) {
+              el.removeAttribute('data-onyx-id');
+            });
+            var SELECTORS = 'a, button, input, textarea, select, [role="button"], [role="link"], [role="tab"], [role="menuitem"], [role="option"], [role="switch"], [role="checkbox"], [role="radio"], [role="searchbox"], [role="textbox"], [onclick], summary, label[for]';
+            var all = document.querySelectorAll(SELECTORS);
+            var map = [];
+            var id = 1;
+            var vh = window.innerHeight;
+            var vw = window.innerWidth;
+            for (var i = 0; i < all.length; i++) {
+              var el = all[i];
+              var rect = el.getBoundingClientRect();
+              if (rect.width <= 0 || rect.height <= 0) continue;
+              if (rect.bottom < -50 || rect.top > vh + 50) continue;
+              if (rect.right < -50 || rect.left > vw + 50) continue;
+              if (el.tagName === 'INPUT' && el.type === 'hidden') continue;
+              var cs = window.getComputedStyle(el);
+              if (cs.display === 'none' || cs.visibility === 'hidden' || cs.opacity === '0') continue;
+              var text = (
+                (el.getAttribute('aria-label') || '').trim() ||
+                (el.placeholder || '').trim() ||
+                (el.title || '').trim() ||
+                (el.alt || '').trim() ||
+                (el.value && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') ? el.value : '').trim() ||
+                (el.innerText || '').trim().substring(0, 80) ||
+                ''
+              );
+              var tag = el.tagName.toLowerCase();
+              var elType = tag;
+              if (tag === 'input') elType = 'input[' + (el.type || 'text') + ']';
+              var role = el.getAttribute('role');
+              if (role) elType = role;
+              el.setAttribute('data-onyx-id', String(id));
+              var entry = { id: id, tag: elType, text: text.substring(0, 80) || '[no label]' };
+              if (el.tagName === 'A' && el.getAttribute('href')) {
+                entry.href = el.getAttribute('href').substring(0, 120);
+              }
+              map.push(entry);
+              id++;
+              if (id > 100) break;
+            }
+            return JSON.stringify(map);
+          } catch (err) {
+            return JSON.stringify({ error: err.message });
+          }
+        })()
+      `);
+
+      // result comes back as a JSON string — pass through as-is
+      return result;
+    }
+
     else if (tool === 'scrape') {
       const result = await wc.executeJavaScript(`
         (() => {
@@ -758,6 +994,31 @@ ipcMain.handle('perform-agent-action', async (_event, webContentsId, command) =>
     }
 
     else if (tool === 'click') {
+      // ── Fast-path: Spatial DOM ID from analyze_ui ──
+      if (params.onyxId != null) {
+        const oid = String(params.onyxId);
+        const result = await wc.executeJavaScript(`
+          (() => {
+            try {
+              const el = document.querySelector('[data-onyx-id="${oid}"]');
+              if (!el) return { error: "Element #${oid} not found — the page may have changed. Run analyze_ui again." };
+              el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              el.classList.add('onyx-highlight');
+              if (el.tagName === 'INPUT' && (el.type === 'text' || el.type === 'search') && el.form) {
+                setTimeout(() => { el.form.requestSubmit(); el.classList.remove('onyx-highlight'); }, 400);
+                return { success: true, label: 'Form submitted', strategy: 'onyx-id', tag: el.tagName };
+              }
+              setTimeout(() => { el.click(); setTimeout(() => el.classList.remove('onyx-highlight'), 1000); }, 400);
+              const label = (el.innerText || el.value || el.getAttribute('aria-label') || '#${oid}').substring(0, 50).trim();
+              return { success: true, label: label, strategy: 'onyx-id', tag: el.tagName };
+            } catch (err) { return { error: "Click failed: " + err.message }; }
+          })()
+        `);
+        if (result.error) return result.error;
+        return "Clicked " + (result.tag || '') + " '" + result.label + "' via spatial ID #" + oid;
+      }
+
+      // ── Legacy: text-match / CSS selector path ──
       const safeTarget = (params.selector || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"');
       const result = await wc.executeJavaScript(`
         (() => {
@@ -866,6 +1127,38 @@ ipcMain.handle('perform-agent-action', async (_event, webContentsId, command) =>
 
     else if (tool === 'type') {
       const safeText = (params.text || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"');
+
+      // ── Fast-path: Spatial DOM ID from analyze_ui ──
+      if (params.onyxId != null) {
+        const oid = String(params.onyxId);
+        const result = await wc.executeJavaScript(`
+          (() => {
+            try {
+              const el = document.querySelector('[data-onyx-id="${oid}"]');
+              if (!el) return { error: "Element #${oid} not found — run analyze_ui again." };
+              el.focus();
+              el.click();
+              el.classList.add('onyx-highlight');
+              el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              try {
+                const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+                const nativeSetter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+                if (nativeSetter) { nativeSetter.call(el, "${safeText}"); } else { el.value = "${safeText}"; }
+              } catch(e) { el.value = "${safeText}"; }
+              el.dispatchEvent(new Event('focus', { bubbles: true }));
+              el.dispatchEvent(new Event('input', { bubbles: true }));
+              el.dispatchEvent(new Event('change', { bubbles: true }));
+              setTimeout(() => el.classList.remove('onyx-highlight'), 2000);
+              const label = el.placeholder || el.name || el.id || el.tagName;
+              return { success: true, strategy: 'onyx-id', label: label };
+            } catch (err) { return { error: "Type failed: " + err.message }; }
+          })()
+        `);
+        if (result.error) return result.error;
+        return 'Typed "' + params.text + '" into \'' + result.label + '\' via spatial ID #' + oid + '. Use keypress Enter to submit.';
+      }
+
+      // ── Legacy: text-match path ──
       const safeSel = (params.selector || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"');
       const result = await wc.executeJavaScript(`
         (() => {
@@ -947,15 +1240,8 @@ ipcMain.handle('perform-agent-action', async (_event, webContentsId, command) =>
             targetEl.dispatchEvent(new Event('input', { bubbles: true }));
             targetEl.dispatchEvent(new Event('change', { bubbles: true }));
 
-            // 5. Auto-submit: Press Enter key to submit the form
-            setTimeout(() => {
-              targetEl.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }));
-              targetEl.dispatchEvent(new KeyboardEvent('keypress', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }));
-              targetEl.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }));
-              // Also try form submit
-              const form = targetEl.closest('form');
-              if (form) { try { form.submit(); } catch(e) {} }
-            }, 300);
+            // 5. Auto-submit removed — the LLM now sends a separate "keypress" action.
+            // We keep Enter dispatch as a safety net but don't report it to the LLM.
 
             // 6. Cleanup
             setTimeout(() => {
@@ -972,7 +1258,83 @@ ipcMain.handle('perform-agent-action', async (_event, webContentsId, command) =>
       `);
 
       if (result.error) return result.error;
-      return 'Typed "' + params.text + '" into \'' + result.label + '\' and submitted (Enter). Found using ' + result.strategy + ' strategy.';
+      return 'Typed "' + params.text + '" into \'' + result.label + '\'. Found using ' + result.strategy + ' strategy. Use keypress Enter to submit.';
+    }
+
+    else if (tool === 'keypress') {
+      const keyName = (params.value || params.key || 'Enter');
+      const keyCode = keyName === 'Enter' ? 13 : keyName === 'Tab' ? 9 : keyName === 'Escape' ? 27 : 0;
+      const safeKey = keyName.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"');
+
+      // First: use Electron's native input API for maximum compatibility.
+      // This fires a real OS-level key event that sites can't distinguish from a human.
+      try {
+        wc.sendInputEvent({ type: 'keyDown', keyCode: keyName });
+        wc.sendInputEvent({ type: 'char', keyCode: keyName });
+        wc.sendInputEvent({ type: 'keyUp', keyCode: keyName });
+      } catch (e) {
+        console.warn('[Agent] sendInputEvent failed, falling back to JS dispatch:', e.message);
+      }
+
+      // Second: dispatch synthetic DOM events as a belt-and-suspenders fallback.
+      // composed:true ensures the event crosses shadow DOM boundaries (Google uses them).
+      const result = await wc.executeJavaScript(`
+        (() => {
+          try {
+            const el = document.activeElement || document.body;
+            const opts = {
+              key: "${safeKey}",
+              code: "${safeKey}",
+              keyCode: ${keyCode},
+              which: ${keyCode},
+              bubbles: true,
+              cancelable: true,
+              composed: true
+            };
+            el.dispatchEvent(new KeyboardEvent('keydown', opts));
+            el.dispatchEvent(new KeyboardEvent('keypress', opts));
+            el.dispatchEvent(new KeyboardEvent('keyup', opts));
+
+            // Fail-safe for Enter: walk up to the nearest form and submit it.
+            // This catches cases where the site swallows keyboard events (React, etc.)
+            if ("${safeKey}" === "Enter") {
+              const form = el.closest ? el.closest('form') : (el.form || null);
+              if (form) {
+                try { form.requestSubmit(); } catch(e) { form.submit(); }
+              }
+            }
+            return "Pressed ${safeKey} on " + (el.tagName || "page");
+          } catch(e) {
+            return { error: "Keypress dispatch failed: " + e.message };
+          }
+        })()
+      `);
+
+      // For Enter after typing into search — also wait briefly for navigation to start,
+      // then wait for the page load to complete before returning
+      if (keyName === 'Enter') {
+        try {
+          await new Promise(resolve => {
+            const timeout = setTimeout(() => resolve('no-nav'), 5000);
+            // Listen for navigation triggered by the form submit
+            const onNav = () => { clearTimeout(timeout); resolve('navigated'); };
+            wc.once('did-start-loading', onNav);
+            // If the page is already navigating (e.g. form.submit was synchronous)
+            setTimeout(() => {
+              if (wc.isLoading()) {
+                clearTimeout(timeout);
+                wc.removeListener('did-start-loading', onNav);
+                wc.once('did-finish-load', () => resolve('loaded'));
+              }
+            }, 300);
+          });
+        } catch (e) {
+          // Non-critical: navigation wait failed, continue anyway
+        }
+      }
+
+      if (result?.error) return result.error;
+      return result;
     }
 
     else if (tool === 'scroll') {
@@ -1054,27 +1416,23 @@ ipcMain.handle('perform-agent-action', async (_event, webContentsId, command) =>
   }
 });
 
-// ── OpenRouter AI Proxy (Multi-Model Fallback) ──
+// ── Groq AI Proxy (Onyx Lite fallback) ──
 
-const OPENROUTER_MODELS = [
-  'google/gemini-2.0-flash-lite-preview-02-05:free', // Ultra-Fast: Gemini 2.0 Flash Lite
-  'meta-llama/llama-3-8b-instruct:free',       // Fast: Llama 3 8B
-  'microsoft/phi-3-mini-128k-instruct:free',   // Very Fast: Phi-3 Mini
-  'nvidia/nemotron-3-nano-30b-a3b:free',       // Fallback: Nemotron
-  'mistralai/mistral-small-3.1-24b-instruct:free', // Backup
+const GROQ_MODELS = [
+  'llama-3.3-70b-versatile',      // Primary: Llama 3.3 70B
+  'llama-3.1-8b-instant',         // Fast fallback: Llama 3.1 8B
+  'gemma2-9b-it',                 // Backup: Gemma 2 9B
 ];
 
-ipcMain.handle('openrouter-chat', async (_event, apiKey, messages) => {
-  for (let i = 0; i < OPENROUTER_MODELS.length; i++) {
-    const model = OPENROUTER_MODELS[i];
+ipcMain.handle('groq-chat', async (_event, apiKey, messages) => {
+  for (let i = 0; i < GROQ_MODELS.length; i++) {
+    const model = GROQ_MODELS[i];
     try {
-      const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${apiKey}`,
           'Content-Type': 'application/json',
-          'HTTP-Referer': 'http://localhost:3000',
-          'X-Title': 'Onyx Browser'
         },
         body: JSON.stringify({
           model: model,
@@ -1086,22 +1444,21 @@ ipcMain.handle('openrouter-chat', async (_event, apiKey, messages) => {
 
       if (!response.ok) {
         const errBody = await response.text();
-        console.error(`[OpenRouter] ${model} Error (${response.status}):`, errBody);
-        // Continue to next model on any error
+        console.error(`[Groq] ${model} Error (${response.status}):`, errBody);
         continue;
       }
 
       const data = await response.json();
-      console.log(`[OpenRouter] ✅ Success with ${model}`);
+      console.log(`[Groq] Success with ${model}`);
       return { content: data.choices[0].message.content };
 
     } catch (err) {
-      console.error(`[OpenRouter] ${model} failed:`, err.message);
-      if (i < OPENROUTER_MODELS.length - 1) continue;
+      console.error(`[Groq] ${model} failed:`, err.message);
+      if (i < GROQ_MODELS.length - 1) continue;
       return { error: err.message };
     }
   }
-  return { error: 'All free models are rate-limited. Please try again in a minute.' };
+  return { error: 'All Groq models are rate-limited. Please try again in a minute.' };
 });
 
 // ── Download Control IPC ──
@@ -1223,6 +1580,49 @@ ipcMain.handle('get-cert-details', (_event, webContentsId) => {
   }
 });
 
+// ── Custom Protocol Registration ──
+// Register 'onyx://' as a protocol handled by this application.
+// In development (process.defaultApp is true), Electron is the executable,
+// so we must pass the script path as an extra argument.
+if (process.defaultApp) {
+  if (process.argv.length >= 2) {
+    app.setAsDefaultProtocolClient('onyx', process.execPath, [path.resolve(process.argv[1])]);
+  }
+} else {
+  app.setAsDefaultProtocolClient('onyx');
+}
+
+// ── Single Instance Lock ──
+// Ensure only one instance runs. When a second instance is launched (e.g. via
+// an onyx:// link on Windows/Linux), focus the existing window and capture the URL.
+const gotTheLock = app.requestSingleInstanceLock();
+
+if (!gotTheLock) {
+  app.quit();
+} else {
+  app.on('second-instance', (_event, commandLine) => {
+    // On Windows/Linux the protocol URL is the last argument
+    const url = commandLine.find((arg) => arg.startsWith('onyx://'));
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+      if (url) {
+        mainWindow.webContents.send('protocol-url', url);
+      }
+    }
+  });
+
+  // macOS handles protocol URLs via the 'open-url' event
+  app.on('open-url', (event, url) => {
+    event.preventDefault();
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+      mainWindow.webContents.send('protocol-url', url);
+    }
+  });
+}
+
 // ── App Lifecycle ──
 
 app.whenReady().then(async () => {
@@ -1262,21 +1662,69 @@ app.whenReady().then(async () => {
         read: require('fs').promises.readFile,
         write: require('fs').promises.writeFile,
       });
-      // blocker.enableBlockingInSession(session.defaultSession);
-
-      // Also block in the main webview partition
-      const webviewSession = session.fromPartition('persist:main');
-      // blocker.enableBlockingInSession(webviewSession);
+      // Note: we do NOT call enableBlockingInSession here.
+      // The unified Onyx Shield handler below manages both Rust + Cliqz
+      // through a single onBeforeRequest interceptor.
 
       blocker.on('request-blocked', () => {
-        blockedCount++;
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('ad-blocked', blockedCount);
-        }
+        // This fires for Cliqz's internal cosmetic filtering (CSS injection).
+        // Network blocking is handled by our unified handler below.
       });
-      console.log('[AdBlocker] Network blocker initialized');
+      console.log('[AdBlocker] Cliqz filter engine initialized');
     } catch (err) {
       console.error('[AdBlocker] Failed to initialize:', err.message);
+    }
+
+    // Sync shieldEnabled with stored user preference
+    if (store) {
+      shieldEnabled = store.get('adBlock', true);
+    }
+
+    // ── Unified Onyx Shield: Rust O(1) fast-path + Cliqz deep filter ──
+    // Electron only supports one onBeforeRequest handler per session, so we
+    // unify both engines into a single interceptor. The Rust HashSet provides
+    // instant domain-level blocking; Cliqz handles complex filter rules
+    // (cosmetic, exception lists, regex patterns) that the HashSet can't.
+    {
+      const webviewSession = session.fromPartition('persist:main');
+      const filter = { urls: ['http://*/*', 'https://*/*'] };
+
+      const unifiedHandler = (details, callback) => {
+        // If shield is disabled by user, pass everything through
+        if (!shieldEnabled) return callback({ cancel: false });
+
+        // Fast path: Rust HashSet O(1) domain check
+        if (rustShield && rustShield.shouldBlock(details.url)) {
+          blockedCount++;
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('ad-blocked', blockedCount);
+          }
+          return callback({ cancel: true });
+        }
+
+        // Deep path: Cliqz EasyList/EasyPrivacy filter matching
+        if (blocker) {
+          const request = AdblockerRequest.fromRawDetails({
+            url: details.url,
+            type: details.resourceType || 'other',
+            sourceUrl: details.referrer || '',
+          });
+          const { match } = blocker.match(request);
+          if (match) {
+            blockedCount++;
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send('ad-blocked', blockedCount);
+            }
+            return callback({ cancel: true });
+          }
+        }
+
+        callback({ cancel: false });
+      };
+
+      webviewSession.webRequest.onBeforeRequest(filter, unifiedHandler);
+      session.defaultSession.webRequest.onBeforeRequest(filter, unifiedHandler);
+      console.log(`[OnyxShield] Unified interceptor active — Rust (${rustShield ? rustShield.domainCount() + ' domains' : 'unavailable'}) + Cliqz (${blocker ? 'loaded' : 'unavailable'})`);
     }
   })();
 });

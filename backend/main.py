@@ -10,10 +10,12 @@ Run with:
 from __future__ import annotations
 
 import logging
-from fastapi import FastAPI
+from fastapi import FastAPI, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 
 from routers.agent import router as agent_router
+from schemas import MemoryIngestRequest
+from services.memory import ingest_page
 
 # ── Logging ─────────────────────────────────────────────────────
 
@@ -67,3 +69,13 @@ async def root():
 async def health_check():
     """Liveness probe for monitoring / orchestration."""
     return {"status": "healthy"}
+
+
+# ── Memory Ingest ───────────────────────────────────────────────
+
+
+@app.post("/api/memory/ingest", tags=["Memory"])
+async def memory_ingest(body: MemoryIngestRequest, bg: BackgroundTasks):
+    """Accept page content from the frontend and embed it in the background."""
+    bg.add_task(ingest_page, body.url, body.title, body.content)
+    return {"status": "accepted"}

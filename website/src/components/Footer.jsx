@@ -20,7 +20,8 @@ export default function Footer() {
                     </a>
                 </div>
 
-                <p className="footer-copy">© 2026 Eesh Sagar. All rights reserved.</p>
+                <p className="footer-copy">Architected by Eesh Sagar Singh | MAIT, Delhi.</p>
+                <p className="footer-copy" style={{ marginTop: 4, opacity: 0.5 }}>Public Beta v0.1.0 — © 2026 Eesh Sagar. All rights reserved.</p>
             </div>
         </footer>
     )

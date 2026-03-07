@@ -1,12 +1,138 @@
-name: Build Windows Installer
+name: Build & Release
 
 on:
   push:
     branches: [ main ]
+    tags: [ 'v*' ]
 
 jobs:
+  # ── Windows Installer ──────────────────────────────────────────────
   build-win:
+    if: >-
+      !contains(github.event.head_commit.message, '[skip ci]') &&
+      !contains(github.event.head_commit.message, '[website-only]')
     runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Cache Rust build
+        uses: actions/cache@v4
+        with:
+          path: |
+            onyx-shield/target
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: rust-win-${{ hashFiles('onyx-shield/Cargo.lock') }}
+          restore-keys: rust-win-
+
+      - name: Build Onyx Shield (Rust → NAPI)
+        working-directory: onyx-shield
+        run: |
+          npm install
+          npm run build
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm install
+
+      - name: Build React App
+        run: npm run build
+
+      - name: Build Windows Installer
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx electron-builder --win --x64 --publish always
+
+      - name: Upload Windows Installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: Windows-Installer
+          path: release/*.exe
+
+  # ── macOS DMG (Apple Silicon) ──────────────────────────────────────
+  build-mac:
+    if: >-
+      !contains(github.event.head_commit.message, '[skip ci]') &&
+      !contains(github.event.head_commit.message, '[website-only]')
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+
+      - name: Cache Rust build
+        uses: actions/cache@v4
+        with:
+          path: |
+            onyx-shield/target
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: rust-mac-${{ hashFiles('onyx-shield/Cargo.lock') }}
+          restore-keys: rust-mac-
+
+      - name: Build Onyx Shield (Rust → NAPI)
+        working-directory: onyx-shield
+        run: |
+          npm install
+          npm run build
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm install
+
+      - name: Build React App
+        run: npm run build
+
+      - name: Build macOS DMG
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx electron-builder --mac --arm64 --publish always
+
+      - name: Upload macOS DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: macOS-DMG
+          path: release/*.dmg
+
+  # ── Website Deploy (GitHub Pages) ──────────────────────────────────
+  deploy-website:
+    runs-on: ubuntu-latest
+
+    # Only run when website files change
+    if: >-
+      contains(github.event.head_commit.message, '[website]') ||
+      contains(toJSON(github.event.commits.*.modified), 'website/') ||
+      contains(toJSON(github.event.commits.*.added), 'website/')
+
+    permissions:
+      pages: write
+      id-token: write
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
 
     steps:
       - name: Checkout code
@@ -17,17 +143,19 @@ jobs:
         with:
           node-version: 20
 
-      - name: Install Dependencies
+      - name: Install Website Dependencies
+        working-directory: website
         run: npm install
 
-      - name: Build React App
+      - name: Build Website
+        working-directory: website
         run: npm run build
 
-      - name: Build Windows Installer
-        run: npm run build:win
-
-      - name: Upload Windows Installer
-        uses: actions/upload-artifact@v4
+      - name: Upload Pages Artifact
+        uses: actions/upload-pages-artifact@v3
         with:
-          name: Windows-Installer
-          path: release/*.exe
+          path: website/dist
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
