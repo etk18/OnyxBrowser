@@ -937,6 +937,23 @@ button {
     opacity: 0.6;
 }
 
+.rn-bugfix-card {
+    grid-column: 1 / -1;
+    margin-top: 20px;
+    border-color: rgba(234, 179, 8, 0.1);
+}
+.rn-bugfix-card:hover {
+    border-color: rgba(234, 179, 8, 0.2);
+    box-shadow: 0 0 24px rgba(234, 179, 8, 0.06);
+}
+.rn-bugfix-title {
+    border-bottom-color: rgba(234, 179, 8, 0.12);
+    color: #facc15;
+}
+.rn-bugfix-list li::before {
+    background: #facc15;
+}
+
 @media (max-width: 640px) {
     .rn-sections {
         grid-template-columns: 1fr;
