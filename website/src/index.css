@@ -829,10 +829,6 @@ button {
         justify-content: center;
         text-align: center;
     }
-
-    .ledger-card-desc {
-        font-size: 13px;
-    }
 }
 
 /* ── Navbar BETA Badge ───────────────────────────── */
@@ -853,102 +849,99 @@ button {
     50% { box-shadow: 0 0 12px rgba(0, 242, 234, 0.6); }
 }
 
-/* ── Onyx Ledger Timeline ────────────────────────── */
-.ledger-timeline {
-    display: flex;
-    flex-direction: column;
-    gap: 0;
+/* ── Release Notes ─────────────────────────────── */
+.rn-release {
     margin-top: 48px;
 }
-.ledger-entry {
-    display: flex;
-    gap: 20px;
-    min-height: 80px;
+.rn-header {
+    margin-bottom: 32px;
 }
-.ledger-rail {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    flex-shrink: 0;
-    width: 20px;
-    padding-top: 6px;
-}
-.ledger-dot {
-    width: 14px;
-    height: 14px;
-    border-radius: 50%;
-    background: var(--accent);
-    box-shadow: 0 0 12px rgba(0, 242, 234, 0.5);
-    flex-shrink: 0;
-}
-.ledger-line {
-    width: 2px;
-    flex: 1;
-    background: linear-gradient(180deg, rgba(0, 242, 234, 0.3) 0%, rgba(147, 51, 234, 0.12) 100%);
-    margin-top: 4px;
-}
-.ledger-card {
-    flex: 1;
-    padding: 24px;
-    margin-bottom: 24px;
-    border-color: rgba(255, 255, 255, 0.05);
-    transition: border-color 0.25s, box-shadow 0.25s;
-}
-.ledger-card:hover {
-    border-color: rgba(0, 242, 234, 0.2);
-    box-shadow: 0 0 24px rgba(0, 242, 234, 0.06);
-}
-.ledger-card-header {
+.rn-version-row {
     display: flex;
     align-items: center;
-    gap: 10px;
-    margin-bottom: 14px;
+    gap: 12px;
+    margin-bottom: 6px;
 }
-.ledger-icon {
-    font-size: 24px;
-    flex-shrink: 0;
-}
-.ledger-card-title {
-    font-size: 18px;
-    font-weight: 600;
-    color: #eee;
+.rn-version {
+    font-size: 28px;
+    font-weight: 800;
+    color: #fff;
+    letter-spacing: -0.5px;
     margin: 0;
-    flex: 1;
 }
-.ledger-tag {
-    font-size: 10px;
+.rn-tag {
+    font-size: 11px;
     font-weight: 700;
     color: var(--accent);
     background: rgba(0, 242, 234, 0.08);
     border: 1px solid rgba(0, 242, 234, 0.2);
     border-radius: 6px;
-    padding: 3px 9px;
+    padding: 3px 10px;
     letter-spacing: 0.8px;
     text-transform: uppercase;
-    white-space: nowrap;
 }
-.ledger-card-desc {
-    font-size: 14px;
-    line-height: 1.75;
-    color: #999;
+.rn-date {
+    font-size: 13px;
+    color: var(--text-dim);
+    display: block;
+    margin-bottom: 8px;
+}
+.rn-highlight {
+    font-size: 15px;
+    color: var(--text-dim);
     margin: 0;
 }
-.ledger-sig {
-    text-align: center;
-    margin-top: 48px;
-    font-size: 13px;
-    color: #555;
-    letter-spacing: 0.3px;
+.rn-sections {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 20px;
+}
+.rn-section-card {
+    padding: 28px 24px;
+}
+.rn-section-card:hover {
+    transform: translateY(-4px);
+}
+.rn-section-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: #fff;
+    margin: 0 0 16px 0;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--glass-border);
+}
+.rn-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.rn-list li {
+    font-size: 13.5px;
+    line-height: 1.65;
+    color: #999;
+    padding-left: 18px;
+    position: relative;
+}
+.rn-list li::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 8px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    opacity: 0.6;
 }
 
 @media (max-width: 640px) {
-    .ledger-entry {
-        gap: 12px;
+    .rn-sections {
+        grid-template-columns: 1fr;
     }
-    .ledger-card {
-        padding: 16px;
-    }
-    .ledger-card-title {
-        font-size: 15px;
+    .rn-version {
+        font-size: 22px;
     }
 }
