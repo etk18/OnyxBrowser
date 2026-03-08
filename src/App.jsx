@@ -3,6 +3,8 @@ import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import Favicon from './components/Favicon';
 import TopBar from './components/TopBar';
+import TabStrip from './components/TabStrip';
+import NavigationBar from './components/NavigationBar';
 import AboutModal from './components/AboutModal';
 import SettingsModal, { SEARCH_ENGINES } from './components/SettingsModal';
 import FindBar from './components/FindBar';
@@ -11,8 +13,10 @@ import Web3Panel from './components/Web3Panel';
 import AISidebar from './components/AISidebar';
 import HomePage from './components/HomePage';
 import OnyxLedger from './components/OnyxLedger';
+import MemoryDashboard from './components/MemoryDashboard';
 import ErrorBoundary from './components/ErrorBoundary';
 import WalletModal from './components/WalletModal';
+import AgentOverlay from './components/AgentOverlay';
 import { useWallet } from './hooks/useWallet';
 import './App.css';
 
@@ -33,13 +37,13 @@ let nextTabId = 2;
 // Detect if this window is incognito
 const isIncognito = new URLSearchParams(window.location.search).get('incognito') === '1';
 
-function createTab(url = 'onyx://newtab') {
-  return { id: nextTabId++, url, title: 'New Tab', isLoading: false, favicon: null };
+function createTab(url = 'onyx://newtab', incognito = false) {
+  return { id: nextTabId++, url, title: 'New Tab', isLoading: false, favicon: null, isIncognito: incognito };
 }
 
 function App() {
   const [tabs, setTabs] = useState([
-    { id: 1, url: 'onyx://newtab', title: 'New Tab', isLoading: false, favicon: null },
+    { id: 1, url: 'onyx://newtab', title: 'New Tab', isLoading: false, favicon: null, isIncognito: isIncognito },
   ]);
   const [activeTabId, setActiveTabId] = useState(1);
   const [currentUrl, setCurrentUrl] = useState('onyx://newtab');
@@ -51,12 +55,18 @@ function App() {
   const [menuTab, setMenuTab] = useState('tabs'); // 'tabs' | 'history' | 'bookmarks' | 'downloads' | 'wallet'
   const [aboutOpen, setAboutOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [isProcessingTab, setIsProcessingTab] = useState(false);
   const [walletRequest, setWalletRequest] = useState(null); // { origin } when dApp requests connection
   /* REMOVED DUPLICATE */
   const [searchEngine, setSearchEngine] = useState('google');
 
   // AI Sidebar
   const [aiOpen, setAiOpen] = useState(false);
+
+  // Agentic Omnibox
+  const [agentThinking, setAgentThinking] = useState(false);
+  const [agentCommand, setAgentCommand] = useState('');
+  const [agentResponse, setAgentResponse] = useState(null);
 
   // Find-in-page
   const [showFindBar, setShowFindBar] = useState(false);
@@ -85,11 +95,7 @@ function App() {
   // Web3 wallet
   const wallet = useWallet();
 
-  const webviewRefs = useRef({});
-  const initialUrls = useRef({ 1: 'onyx://newtab' });
   const cameFromInternal = useRef({}); // Track tabs that navigated from internal pages
-  const [webviewGen, setWebviewGen] = useState({}); // Per-tab generation counter for force-remounting webviews
-  const [webviewPreloadPath, setWebviewPreloadPath] = useState(null); // Absolute path to webview-preload.js
   const activeTabIdRef = useRef(activeTabId);
   activeTabIdRef.current = activeTabId;
 
@@ -100,22 +106,9 @@ function App() {
 
   // ── Helpers ──
 
-  /** Check if a webview's internal webContents is initialized and safe to call methods on */
-  const isWebviewReady = (wv) => {
-    try {
-      return wv && typeof wv.getWebContentsId === 'function' && wv.getWebContentsId() > 0;
-    } catch {
-      return false;
-    }
-  };
-
   const updateTab = useCallback((id, patch) => {
     setTabs((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)));
   }, []);
-
-  const getActiveWebview = useCallback(() => {
-    return webviewRefs.current[activeTabId] ?? null;
-  }, [activeTabId]);
 
 
   // ── Sync URL display on tab switch ──
@@ -123,17 +116,9 @@ function App() {
   useEffect(() => {
     if (activeTab) {
       setCurrentUrl(activeTab.url);
-      const wv = webviewRefs.current[activeTabId];
-      if (wv) {
-        try {
-          setCanGoBack(wv.canGoBack() || !!cameFromInternal.current[activeTabId]);
-          setCanGoForward(wv.canGoForward());
-        } catch {
-          setCanGoBack(false);
-          setCanGoForward(false);
-        }
-      } else {
-        setCanGoBack(false);
+      // Nav state will be synced via onTabNavState IPC listener
+      if (isInternalUrl(activeTab.url)) {
+        setCanGoBack(!!cameFromInternal.current[activeTabId]);
         setCanGoForward(false);
       }
     }
@@ -173,9 +158,15 @@ function App() {
     if (!window.browserAPI?.onNewTab) return;
     const unsub = window.browserAPI.onNewTab((url) => {
       const tab = createTab(url);
-      initialUrls.current[tab.id] = url;
       setTabs((prev) => [...prev, tab]);
       setActiveTabId(tab.id);
+      // Create WebContentsView for non-internal URLs
+      if (!isInternalUrl(url)) {
+        window.browserAPI.createView(tab.id, url, isIncognito);
+        window.browserAPI.switchView?.(tab.id, false);
+      } else {
+        window.browserAPI.switchView?.(tab.id, true);
+      }
     });
     return () => unsub();
   }, []);
@@ -213,16 +204,6 @@ function App() {
     }
   }, []);
 
-  // ── Fetch webview preload path for Web3 injection ──
-
-  useEffect(() => {
-    if (window.browserAPI?.getWebviewPreloadPath) {
-      window.browserAPI.getWebviewPreloadPath().then((p) => {
-        if (p) setWebviewPreloadPath(p);
-      });
-    }
-  }, []);
-
   // ── Session Restore on mount ──
 
   useEffect(() => {
@@ -230,14 +211,18 @@ function App() {
     window.browserAPI.getLastSession().then((urls) => {
       if (!urls || urls.length === 0) return;
       // Build tabs from saved session
-      const restoredTabs = urls.map((url) => {
-        const tab = createTab(url);
-        initialUrls.current[tab.id] = url;
-        return tab;
-      });
+      const restoredTabs = urls.map((url) => createTab(url));
       setTabs(restoredTabs);
       setActiveTabId(restoredTabs[0].id);
       setCurrentUrl(restoredTabs[0].url);
+      // Create WebContentsViews for non-internal URLs
+      restoredTabs.forEach((tab) => {
+        if (!isInternalUrl(tab.url)) {
+          window.browserAPI.createView(tab.id, tab.url, false);
+        }
+      });
+      // Switch to the first tab
+      window.browserAPI.switchView?.(restoredTabs[0].id, isInternalUrl(restoredTabs[0].url));
     });
   }, []);
 
@@ -288,19 +273,20 @@ function App() {
   }, []);
 
   useEffect(() => {
-    const handleZoom = (direction) => {
-      const wv = webviewRefs.current[activeTabIdRef.current];
-      if (!wv) return;
-      const current = wv.getZoomLevel() || 0;
-      let newLevel = current;
+    const handleZoom = async (direction) => {
+      const tabId = activeTabIdRef.current;
+      try {
+        const current = await window.browserAPI.getZoomLevel(tabId) || 0;
+        let newLevel = current;
 
-      if (direction === 'in') newLevel += 0.5;
-      else if (direction === 'out') newLevel -= 0.5;
-      else if (direction === '0') newLevel = 0;
+        if (direction === 'in') newLevel += 0.5;
+        else if (direction === 'out') newLevel -= 0.5;
+        else if (direction === '0') newLevel = 0;
 
-      newLevel = Math.max(-5, Math.min(5, newLevel));
-      wv.setZoomLevel(newLevel);
-      showZoomBadge(newLevel);
+        newLevel = Math.max(-5, Math.min(5, newLevel));
+        await window.browserAPI.setZoomLevel(tabId, newLevel);
+        showZoomBadge(newLevel);
+      } catch { }
     };
 
     const handleKeyDown = (e) => {
@@ -369,15 +355,16 @@ function App() {
     };
 
     // Cmd+Scroll → Zoom
-    const handleWheel = (e) => {
+    const handleWheel = async (e) => {
       if (!(e.metaKey || e.ctrlKey)) return;
       e.preventDefault();
-      const wv = webviewRefs.current[activeTabIdRef.current];
-      if (!wv) return;
-      const current = wv.getZoomLevel() || 0;
-      const delta = e.deltaY < 0 ? 0.5 : -0.5;
-      const newLevel = Math.max(-5, Math.min(5, current + delta));
-      wv.setZoomLevel(newLevel);
+      const tabId = activeTabIdRef.current;
+      try {
+        const current = await window.browserAPI.getZoomLevel(tabId) || 0;
+        const delta = e.deltaY < 0 ? 0.5 : -0.5;
+        const newLevel = Math.max(-5, Math.min(5, current + delta));
+        await window.browserAPI.setZoomLevel(tabId, newLevel);
+      } catch { }
     };
 
     window.addEventListener('keydown', handleKeyDown);
@@ -390,7 +377,7 @@ function App() {
 
   // ── Navigation ──
 
-  const handleNavigate = useCallback((url) => {
+  const handleNavigate = useCallback(async (url) => {
     console.log('[App] handleNavigate called for:', url);
     // Handle internal onyx:// URLs
     if (/^onyx:\/\//i.test(url)) {
@@ -398,6 +385,8 @@ function App() {
       updateTab(activeTabId, { url: internalUrl, title: internalUrl.replace('onyx://', '').charAt(0).toUpperCase() + internalUrl.replace('onyx://', '').slice(1) });
       setCurrentUrl(internalUrl);
       setCanGoBack(false);
+      // Hide the WebContentsView (show internal page)
+      window.browserAPI.switchView?.(activeTabId, true);
       return;
     }
 
@@ -419,68 +408,90 @@ function App() {
       // Mark that we came from internal page so we can go back
       cameFromInternal.current[activeTabId] = true;
       setCanGoBack(true);
-    }
-
-    // Always reuse the existing webview (it's kept alive via visibility:hidden)
-    const wv = getActiveWebview();
-    if (wv && isWebviewReady(wv)) {
-      if (leavingInternal) {
-        try { wv.clearHistory(); } catch (e) { }
-      }
-      wv.loadURL(finalUrl);
-    } else if (wv) {
-      // Webview exists but not ready — wait for dom-ready then load
-      const onReady = () => { wv.loadURL(finalUrl); };
-      wv.addEventListener('dom-ready', onReady, { once: true });
+      // Create a new WebContentsView for this tab (it was on an internal page)
+      await window.browserAPI.createView(activeTabId, finalUrl, activeTab?.isIncognito || isIncognito);
+      window.browserAPI.switchView?.(activeTabId, false);
     } else {
-      // Fallback: This should rarely happen now that we keep webviews alive
-      initialUrls.current[activeTabId] = finalUrl;
-      setWebviewGen(prev => ({ ...prev, [activeTabId]: (prev[activeTabId] || 0) + 1 }));
+      // Navigate existing view
+      window.browserAPI.navigateView(activeTabId, finalUrl);
     }
-  }, [activeTabId, updateTab, getActiveWebview, searchEngine, currentUrl]);
+  }, [activeTabId, updateTab, searchEngine, currentUrl, activeTab]);
 
   const handleBack = useCallback(() => {
-    const wv = getActiveWebview();
     const fromInternal = !!cameFromInternal.current[activeTabId];
 
-    if (wv && isWebviewReady(wv) && wv.canGoBack()) {
-      // Webview has real history — go back within the site
-      wv.goBack();
-    } else if (fromInternal) {
+    if (fromInternal) {
       // No webview history but started from Start Page — go home
       delete cameFromInternal.current[activeTabId];
       updateTab(activeTabId, { url: 'onyx://newtab', title: 'New Tab' });
       setCurrentUrl('onyx://newtab');
       setCanGoBack(false);
+      // Close the WebContentsView, show internal page
+      window.browserAPI.closeView?.(activeTabId);
+      window.browserAPI.switchView?.(activeTabId, true);
+    } else {
+      window.browserAPI.goBackView(activeTabId);
     }
-  }, [getActiveWebview, activeTabId, updateTab]);
+  }, [activeTabId, updateTab]);
 
   const handleForward = useCallback(() => {
-    const wv = getActiveWebview();
-    if (wv && isWebviewReady(wv) && wv.canGoForward()) wv.goForward();
-  }, [getActiveWebview]);
+    window.browserAPI.goForwardView(activeTabId);
+  }, [activeTabId]);
 
   const handleReload = useCallback(() => {
-    const wv = getActiveWebview();
-    if (wv && isWebviewReady(wv)) wv.reload();
-  }, [getActiveWebview]);
+    window.browserAPI.reloadView(activeTabId);
+  }, [activeTabId]);
+
+  // ── Agentic Omnibox command handler ──
+
+  const handleAgentCommand = useCallback(async (command) => {
+    setAgentCommand(command);
+    setAgentThinking(true);
+    setAgentResponse(null);
+    try {
+      const result = await window.browserAPI.executeAgentCommand(command, activeTabId);
+      setAgentResponse(result);
+      // If the backend returned a navigate action and the tab is on an internal page,
+      // drive navigation from React so the view gets created properly
+      if (result?.action === 'navigate' && result?.url && isInternalUrl(currentUrl)) {
+        handleNavigate(result.url);
+      }
+    } catch (err) {
+      setAgentResponse({ error: err.message || 'Agent command failed' });
+    } finally {
+      setAgentThinking(false);
+    }
+  }, [activeTabId, currentUrl, handleNavigate]);
+
+  const dismissAgent = useCallback(() => {
+    setAgentThinking(false);
+    setAgentCommand('');
+    setAgentResponse(null);
+  }, []);
 
   // ── Tab actions ──
 
   const handleNewTab = () => {
-    const tab = createTab();
-    initialUrls.current[tab.id] = tab.url;
+    if (isProcessingTab) return;
+    setIsProcessingTab(true);
+    const tab = createTab('onyx://newtab', isIncognito);
     setTabs((prev) => [...prev, tab]);
     setActiveTabId(tab.id); // Switch view immediately
     setMenuOpen(false); // Close menu if open
+    // Internal page — tell main process to hide any active WebContentsView
+    window.browserAPI.switchView?.(tab.id, true);
+    // Release lock after a short debounce
+    setTimeout(() => setIsProcessingTab(false), 300);
   };
 
   const handleCloseTab = (e, id) => {
     if (e) e.stopPropagation();
+    if (isProcessingTab) return;
+    setIsProcessingTab(true);
 
-    // Cleanup refs
-    delete webviewRefs.current[id];
-    delete initialUrls.current[id];
+    // Close the WebContentsView in the main process
+    window.browserAPI.closeView?.(id);
+    delete cameFromInternal.current[id];
 
     // 1. Filter out the closed tab (using callback to ensure fresh state)
     setTabs((currentTabs) => {
@@ -488,29 +499,44 @@ function App() {
 
       // 2. Handle "Empty Browser" Case
       if (remainingTabs.length === 0) {
-        const newTab = createTab(); // Use our helper for consistency
-        initialUrls.current[newTab.id] = newTab.url;
+        const newTab = createTab('onyx://newtab', isIncognito);
         setActiveTabId(newTab.id);
+        window.browserAPI.switchView?.(newTab.id, true);
         return [newTab];
       }
 
       // 3. Handle "Closing the Active Tab" Case
-      if (id === activeTabIdRef.current) { // Use ref for current active ID inside callback
+      if (id === activeTabIdRef.current) {
         const index = currentTabs.findIndex(tab => tab.id === id);
-        // Try to switch to the tab on the right (index), or the one on the left (index - 1)
-        // If we closed the last tab (index == length-1), use index-1.
-        // If we closed a middle tab, use index (which is now the next tab).
         const newActiveTab = remainingTabs[index] || remainingTabs[index - 1];
         if (newActiveTab) {
           setActiveTabId(newActiveTab.id);
+          window.browserAPI.switchView?.(newActiveTab.id, isInternalUrl(newActiveTab.url));
         }
       }
       return remainingTabs;
     });
+    // Release lock after a short debounce
+    setTimeout(() => setIsProcessingTab(false), 300);
   };
 
   const handleSwitchTab = (id) => {
     setActiveTabId(id);
+    const tab = tabs.find(t => t.id === id);
+    const internal = isInternalUrl(tab?.url);
+    window.browserAPI.switchView?.(id, internal);
+    // Query nav state for the new tab
+    if (!internal) {
+      window.browserAPI.getNavState?.(id).then((state) => {
+        if (state) {
+          setCanGoBack(state.canGoBack || !!cameFromInternal.current[id]);
+          setCanGoForward(state.canGoForward);
+          if (state.webContentsId) {
+            setWcIds(prev => ({ ...prev, [id]: state.webContentsId }));
+          }
+        }
+      }).catch(() => {});
+    }
   };
 
   // ── Library actions ──
@@ -542,122 +568,6 @@ function App() {
     setMenuOpen(false);
   };
 
-  // ── Webview event binding (stable — uses refs, not state) ──
-
-  const bindWebviewEvents = useCallback(
-    (wv, tabId) => {
-      if (!wv || wv.__bound) return;
-      wv.__bound = true;
-
-      wv.addEventListener('did-navigate', (e) => {
-        console.log('[App] did-navigate:', e.url); // DEBUG
-        // Ignore about:blank (used to reset webview history)
-        if (e.url === 'about:blank') return;
-
-        // Sync initialUrls so the src prop is correct
-        initialUrls.current[tabId] = e.url;
-
-        let favicon = null;
-        try { favicon = `https://www.google.com/s2/favicons?sz=64&domain_url=${new URL(e.url).origin}`; } catch { }
-        updateTab(tabId, { url: e.url, favicon });
-        if (tabId === activeTabIdRef.current) {
-          setCurrentUrl(e.url);
-          setCanGoBack(wv.canGoBack() || !!cameFromInternal.current[tabId]);
-          setCanGoForward(wv.canGoForward());
-        }
-      });
-
-      wv.addEventListener('did-navigate-in-page', (e) => {
-        if (e.isMainFrame) {
-          updateTab(tabId, { url: e.url });
-          if (tabId === activeTabIdRef.current) {
-            setCurrentUrl(e.url);
-            setCanGoBack(wv.canGoBack());
-            setCanGoForward(wv.canGoForward());
-          }
-        }
-      });
-
-      wv.addEventListener('page-title-updated', (e) => updateTab(tabId, { title: e.title }));
-
-      wv.addEventListener('page-favicon-updated', (e) => {
-        if (e.favicons && e.favicons.length > 0) {
-          let faviconUrl = e.favicons[0];
-          if (faviconUrl && /^(https?:|data:)/.test(faviconUrl)) {
-            updateTab(tabId, { favicon: faviconUrl });
-          } else {
-            try {
-              const origin = new URL(wv.getURL()).origin;
-              updateTab(tabId, { favicon: `https://www.google.com/s2/favicons?sz=64&domain_url=${origin}` });
-            } catch { }
-          }
-        }
-      });
-
-      wv.addEventListener('did-start-loading', () => updateTab(tabId, { isLoading: true }));
-
-      wv.addEventListener('did-stop-loading', () => {
-        updateTab(tabId, { isLoading: false });
-      });
-
-      // ── Semantic Memory: silently scrape and ingest page content ──
-      wv.addEventListener('did-finish-load', () => {
-        try {
-          const url = wv.getURL();
-          if (!url || url === 'about:blank' || url.startsWith('chrome://')) return;
-          wv.executeJavaScript(`
-            (function() {
-              try {
-                var t = document.title || '';
-                var b = (document.body && document.body.innerText) || '';
-                return JSON.stringify({ title: t, content: b.substring(0, 1500) });
-              } catch(e) { return '{}'; }
-            })()
-          `).then(raw => {
-            try {
-              const data = JSON.parse(raw || '{}');
-              if (data.content && data.content.length > 50) {
-                fetch('http://localhost:8000/api/memory/ingest', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ url, title: data.title || url, content: data.content }),
-                }).catch(() => {});
-              }
-            } catch {}
-          }).catch(() => {});
-        } catch {}
-      });
-
-      wv.addEventListener('dom-ready', () => {
-        // Force 125% scale by default for better readability
-        try {
-          wv.setZoomFactor(1.25);
-          wv.insertCSS('html, body { overflow-x: hidden; }');
-        } catch { }
-
-        // Store webContentsId for audio state lookup
-        try {
-          const id = wv.getWebContentsId();
-          setWcIds((prev) => {
-            if (prev[tabId] === id) return prev;
-            return { ...prev, [tabId]: id };
-          });
-        } catch { }
-
-        if (tabId === activeTabIdRef.current) {
-          setCanGoBack(wv.canGoBack() || !!cameFromInternal.current[tabId]);
-          setCanGoForward(wv.canGoForward());
-        }
-        try {
-          const url = wv.getURL();
-          const title = wv.getTitle();
-          if (url && window.browserAPI?.saveHistory) window.browserAPI.saveHistory(url, title || url);
-        } catch { }
-      });
-    },
-    [updateTab]
-  );
-
   // Listen for Agent Navigation instructions — use refs to avoid resubscribing
   const wcIdsRef = useRef(wcIds);
   wcIdsRef.current = wcIds;
@@ -676,8 +586,7 @@ function App() {
           handleNavigateRef.current(url);
         } else {
           updateTab(tabId, { url });
-          const wv = webviewRefs.current[tabId];
-          if (wv && isWebviewReady(wv)) wv.loadURL(url);
+          window.browserAPI.navigateView(tabId, url);
         }
       } else {
         handleNavigateRef.current(url);
@@ -699,22 +608,84 @@ function App() {
     return () => window.removeEventListener('onyx-agent-navigate', handleAgentNav);
   }, [handleNavigate]);
 
+  // Listen for agent-navigate-url from main process (when /open targets an internal-page tab)
   useEffect(() => {
-    tabs.forEach((tab) => {
-      const wv = webviewRefs.current[tab.id];
-      if (wv) bindWebviewEvents(wv, tab.id);
+    if (!window.browserAPI?.onAgentNavigateUrl) return;
+    const unsub = window.browserAPI.onAgentNavigateUrl(({ tabId, url }) => {
+      if (tabId === activeTabIdRef.current) {
+        handleNavigate(url);
+      }
     });
-  }, [tabs, bindWebviewEvents]);
+    return () => unsub();
+  }, [handleNavigate]);
 
+  // ── Tab event listeners from main process (WebContentsView) ──
   useEffect(() => {
-    const wv = webviewRefs.current[activeTabId];
-    if (wv) {
-      try {
-        setCanGoBack(wv.canGoBack() || !!cameFromInternal.current[activeTabId]);
-        setCanGoForward(wv.canGoForward());
-      } catch { }
+    if (!window.browserAPI) return;
+    const unsubs = [
+      window.browserAPI.onTabDidNavigate?.(({ tabId, url, favicon }) => {
+        if (!url || url === 'about:blank') return;
+        updateTab(tabId, { url, ...(favicon ? { favicon } : {}) });
+        if (tabId === activeTabIdRef.current) {
+          setCurrentUrl(url);
+        }
+      }),
+      window.browserAPI.onTabDidNavigateInPage?.(({ tabId, url }) => {
+        updateTab(tabId, { url });
+        if (tabId === activeTabIdRef.current) {
+          setCurrentUrl(url);
+        }
+      }),
+      window.browserAPI.onTabTitleUpdated?.(({ tabId, title }) => {
+        updateTab(tabId, { title });
+      }),
+      window.browserAPI.onTabFaviconUpdated?.(({ tabId, favicons }) => {
+        if (favicons && favicons.length > 0) {
+          let faviconUrl = favicons[0];
+          if (faviconUrl && /^(https?:|data:)/.test(faviconUrl)) {
+            updateTab(tabId, { favicon: faviconUrl });
+          }
+        }
+      }),
+      window.browserAPI.onTabLoadingChanged?.(({ tabId, isLoading }) => {
+        updateTab(tabId, { isLoading });
+      }),
+      window.browserAPI.onTabNavState?.(({ tabId, canGoBack: back, canGoForward: fwd, webContentsId }) => {
+        if (tabId === activeTabIdRef.current) {
+          setCanGoBack(back || !!cameFromInternal.current[tabId]);
+          setCanGoForward(fwd);
+        }
+        if (webContentsId) {
+          setWcIds(prev => {
+            if (prev[tabId] === webContentsId) return prev;
+            return { ...prev, [tabId]: webContentsId };
+          });
+        }
+      }),
+      window.browserAPI.onTabCrashed?.(({ tabId, reason }) => {
+        updateTab(tabId, { crashed: true, crashReason: reason, isLoading: false });
+      }),
+    ].filter(Boolean);
+    return () => unsubs.forEach(fn => fn());
+  }, [updateTab]);
+
+  // ── Sync tab view bounds when overlays open/close ──
+  useEffect(() => {
+    if (window.browserAPI?.updateViewBounds) {
+      window.browserAPI.updateViewBounds(menuOpen, aiOpen);
     }
-  }, [activeTabId, activeIsLoading]);
+  }, [menuOpen, aiOpen]);
+
+  // ── Native zoom badge (when WebContentsView intercepts Cmd+/- natively) ──
+  useEffect(() => {
+    if (!window.browserAPI?.onNativeZoomChanged) return;
+    const unsub = window.browserAPI.onNativeZoomChanged(({ tabId, level }) => {
+      if (tabId === activeTabIdRef.current) {
+        showZoomBadge(level);
+      }
+    });
+    return () => unsub();
+  }, [showZoomBadge]);
 
   // ── Render ──
 
@@ -729,8 +700,19 @@ function App() {
 
   return (
     <div className="browser-shell">
-      {/* ── Top Bar (z-index: 1000) ── */}
-      <TopBar
+      {/* ── Layer 1: Tab Strip (40px, draggable) ── */}
+      <TabStrip
+        tabs={tabs}
+        activeTabId={activeTabId}
+        onSwitchTab={handleSwitchTab}
+        onCloseTab={handleCloseTab}
+        onNewTab={handleNewTab}
+        isIncognito={isIncognito || activeTab?.isIncognito}
+        isProcessingTab={isProcessingTab}
+      />
+
+      {/* ── Layer 2: Navigation Bar (50px) ── */}
+      <NavigationBar
         canGoBack={canGoBack}
         canGoForward={canGoForward}
         isLoading={activeIsLoading}
@@ -739,23 +721,32 @@ function App() {
         onForward={handleForward}
         onReload={handleReload}
         onNavigate={handleNavigate}
+        onAgentCommand={handleAgentCommand}
         onAddBookmark={handleAddBookmark}
         onToggleMenu={handleToggleMenu}
         onToggleAI={handleToggleAI}
         menuOpen={menuOpen}
         aiOpen={aiOpen}
-        tabCount={tabs.length}
         blockedCount={blockedCount}
         securityStatus={securityStatus}
-        isIncognito={isIncognito}
+        isIncognito={isIncognito || activeTab?.isIncognito}
+        onLedger={() => handleNavigate('onyx://ledger')}
       />
 
       {/* ── Viewport (webview fills everything below topbar) ── */}
       <div className="viewport">
         {activeIsLoading && <div className="loading-bar" />}
 
+        {/* Agent Overlay — /command response panel */}
+        <AgentOverlay
+          isThinking={agentThinking}
+          command={agentCommand}
+          response={agentResponse}
+          onClose={dismissAgent}
+        />
+
         {/* Incognito Banner */}
-        {isIncognito && (
+        {(isIncognito || activeTab?.isIncognito) && (
           <div className="incognito-banner">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
               <circle cx="8" cy="6" r="3" stroke="currentColor" strokeWidth="1.3" />
@@ -769,7 +760,7 @@ function App() {
         {/* Find-in-page bar */}
         {showFindBar && (
           <FindBar
-            webview={webviewRefs.current[activeTabId]}
+            tabId={activeTabId}
             onClose={() => setShowFindBar(false)}
           />
         )}
@@ -786,41 +777,42 @@ function App() {
                 <HistoryPage onNavigate={handleNavigate} />
               )}
               {getInternalPage(activeTab.url) === 'newtab' && (
-                <HomePage onNavigate={handleNavigate} />
+                <HomePage onNavigate={handleNavigate} isIncognito={activeTab?.isIncognito || isIncognito} />
               )}
               {getInternalPage(activeTab.url) === 'ledger' && (
                 <OnyxLedger />
               )}
-              {!['history', 'newtab', 'ledger'].includes(getInternalPage(activeTab.url)) && (
+              {getInternalPage(activeTab.url) === 'memory' && (
+                <MemoryDashboard />
+              )}
+              {!['history', 'newtab', 'ledger', 'memory'].includes(getInternalPage(activeTab.url)) && (
                 <div className="internal-page-unknown">
                   <p>Unknown page: {activeTab.url}</p>
                 </div>
               )}
             </div>
           )}
-          {tabs.map((tab) => {
-              const isActive = tab.id === activeTabId;
-              const isInternal = isActive && isInternalUrl(tab.url);
-              return (
-                <webview
-                  key={`${tab.id}-${webviewGen[tab.id] || 0}`}
-                  ref={(el) => { if (el) webviewRefs.current[tab.id] = el; }}
-                  src={initialUrls.current[tab.id] || tab.url}
-                  partition={isIncognito ? 'incognito' : 'persist:main'}
-                  preload={webviewPreloadPath || undefined}
-                  useragent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-                  className="browser-webview"
-                  style={{
-                    position: isActive && !isInternal ? 'relative' : 'absolute',
-                    width: '100%',
-                    height: '100%',
-                    visibility: isActive && !isInternal ? 'visible' : 'hidden',
-                    zIndex: isActive && !isInternal ? 1 : -1,
-                    flex: isActive && !isInternal ? 1 : undefined,
-                  }}
-                />
-              );
-            })}
+          {/* Crash recovery overlay for crashed tabs */}
+          {activeTab?.crashed && !isInternalUrl(activeTab?.url) && (
+            <div className="tab-crash-overlay">
+              <div className="tab-crash-content">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none">
+                  <circle cx="12" cy="12" r="10" stroke="#ef4444" strokeWidth="1.5" />
+                  <path d="M12 8v4" stroke="#ef4444" strokeWidth="1.5" strokeLinecap="round" />
+                  <circle cx="12" cy="16" r="1" fill="#ef4444" />
+                </svg>
+                <h2>This tab has crashed</h2>
+                <p>{activeTab.crashReason === 'oom' ? 'The page ran out of memory.' : 'Something went wrong while displaying this page.'}</p>
+                <button className="tab-crash-reload" onClick={() => {
+                  updateTab(activeTab.id, { crashed: false, crashReason: null });
+                  window.browserAPI.reloadView?.(activeTab.id);
+                }}>
+                  Reload Tab
+                </button>
+              </div>
+            </div>
+          )}
+          {/* WebContentsView renders web pages natively — no <webview> tags needed */}
         </div>
       </div>
 
@@ -902,13 +894,19 @@ function App() {
           </button>
 
           {!isIncognito && (
-            <button className="menu-nav-btn menu-nav-incognito" onClick={() => { setMenuOpen(false); window.browserAPI?.createIncognitoWindow(); }}>
+            <button className="menu-nav-btn menu-nav-incognito" onClick={() => {
+              setMenuOpen(false);
+              const tab = createTab('onyx://newtab', true);
+              setTabs((prev) => [...prev, tab]);
+              setActiveTabId(tab.id);
+              window.browserAPI.switchView?.(tab.id, true);
+            }}>
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                 <circle cx="8" cy="6" r="3" stroke="currentColor" strokeWidth="1.3" />
                 <path d="M3 6H13" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
                 <path d="M5 9C5 9 6 14 8 14C10 14 11 9 11 9" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
               </svg>
-              <span>Incognito Window</span>
+              <span>Incognito Tab</span>
             </button>
           )}
         </div>
@@ -920,23 +918,47 @@ function App() {
             <div className="menu-section">
               <div className="menu-section-header">
                 <span className="menu-section-title">Open Tabs ({tabs.length})</span>
-                <button className="menu-action-btn" onClick={handleNewTab}>
-                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 2V10M2 6H10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
-                  New Tab
-                </button>
+                <div className="menu-section-actions">
+                  <button className="menu-action-btn" onClick={handleNewTab}>
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 2V10M2 6H10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
+                    New Tab
+                  </button>
+                  {!isIncognito && (
+                    <button className="menu-action-btn menu-action-incognito" onClick={() => {
+                      const tab = createTab('onyx://newtab', true);
+                      setTabs((prev) => [...prev, tab]);
+                      setActiveTabId(tab.id);
+                      setMenuOpen(false);
+                      window.browserAPI.switchView?.(tab.id, true);
+                    }} title="New Incognito Tab">
+                      <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+                        <circle cx="8" cy="6" r="3" stroke="currentColor" strokeWidth="1.3" />
+                        <path d="M3 6H13" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+                        <path d="M5 9C5 9 6 14 8 14C10 14 11 9 11 9" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+                      </svg>
+                      Stealth
+                    </button>
+                  )}
+                </div>
               </div>
               <div className="menu-list">
                 {tabs.map((tab) => (
                   <div
                     key={tab.id}
-                    className={`menu-tab-item ${tab.id === activeTabId ? 'menu-tab-active' : ''}`}
+                    className={`menu-tab-item ${tab.id === activeTabId ? (tab.isIncognito ? 'menu-tab-active menu-tab-incognito-active' : 'menu-tab-active') : ''} ${tab.isIncognito ? 'menu-tab-incognito' : ''}`}
                     onClick={() => { handleSwitchTab(tab.id); setMenuOpen(false); }}
                   >
                     <div className="menu-tab-icon">
-                      {tab.isLoading ? <span className="spinner-sm" /> : <Favicon url={tab.url} size={16} />}
+                      {tab.isLoading ? <span className="spinner-sm" /> : tab.isIncognito ? (
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                          <circle cx="8" cy="6" r="3" stroke="currentColor" strokeWidth="1.3" />
+                          <path d="M3 6H13" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+                          <path d="M5 9C5 9 6 14 8 14C10 14 11 9 11 9" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+                        </svg>
+                      ) : <Favicon url={tab.url} size={16} />}
                     </div>
                     <div className="menu-tab-info">
-                      <span className="menu-tab-title">{tab.title || 'New Tab'}</span>
+                      <span className="menu-tab-title">{tab.isIncognito && (!tab.title || tab.title === 'New Tab') ? 'Incognito Tab' : (tab.title || 'New Tab')}</span>
                       <span className="menu-tab-url">{tab.url}</span>
                     </div>
                     {/* Audio indicator */}
@@ -1117,6 +1139,7 @@ function App() {
         onClose={() => setAiOpen(false)}
         currentWebContentsId={activeWebContentsId}
         currentUrl={currentUrl}
+        onNavigate={handleNavigate}
       />
 
       {/* ── About Modal ── */}

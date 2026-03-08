@@ -13,7 +13,7 @@ function AboutModal({ onClose }) {
                         </svg>
                     </div>
                     <h1>ONYX</h1>
-                    <span className="version-badge">v1.0.0 Public Beta</span>
+                    <span className="version-badge">v0.1.0-beta</span>
                 </div>
 
                 <div className="about-body">

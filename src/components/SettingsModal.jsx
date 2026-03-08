@@ -18,6 +18,7 @@ export default function SettingsModal({ onClose }) {
     const [apiKey, setApiKey] = useState('');
     const [showKey, setShowKey] = useState(false);
     const [saved, setSaved] = useState(false);
+    const [keySyncStatus, setKeySyncStatus] = useState('');  // '', 'syncing', 'synced', 'error'
     const [clearing, setClearing] = useState(false);
     const [cleared, setCleared] = useState(false);
     const [extensions, setExtensions] = useState([]);
@@ -60,7 +61,7 @@ export default function SettingsModal({ onClose }) {
         }
     };
 
-    const handleSave = () => {
+    const handleSave = async () => {
         // Save API key to secure electron-store
         if (window.browserAPI?.setApiKey) {
             window.browserAPI.setApiKey('groq', apiKey.trim());
@@ -71,6 +72,24 @@ export default function SettingsModal({ onClose }) {
         } else {
             localStorage.removeItem('onyx_groq_key');
         }
+
+        // Sync API key to FastAPI backend (.env + runtime)
+        try {
+            setKeySyncStatus('syncing');
+            const resp = await fetch('http://localhost:8000/api/settings/keys', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ provider: 'groq', api_key: apiKey.trim() }),
+            });
+            if (resp.ok) {
+                setKeySyncStatus('synced');
+            } else {
+                setKeySyncStatus('error');
+            }
+        } catch {
+            setKeySyncStatus('error');
+        }
+
         // Save settings via IPC
         if (window.browserAPI?.setSetting) {
             Object.entries(settings).forEach(([key, value]) => {
@@ -78,7 +97,10 @@ export default function SettingsModal({ onClose }) {
             });
         }
         setSaved(true);
-        setTimeout(() => setSaved(false), 2000);
+        setTimeout(() => {
+            setSaved(false);
+            setKeySyncStatus('');
+        }, 2000);
     };
 
     const handleClearCache = async () => {
@@ -175,6 +197,8 @@ export default function SettingsModal({ onClose }) {
                     </div>
                     <p className="settings-hint">
                         Get a free key at <strong>console.groq.com</strong> — powers Onyx Agent & Voice.
+                        {keySyncStatus === 'synced' && <span style={{ color: '#00f2ea', marginLeft: 8, fontWeight: 600 }}>Backend synced</span>}
+                        {keySyncStatus === 'error' && <span style={{ color: '#ff6b6b', marginLeft: 8, fontWeight: 600 }}>Backend sync failed</span>}
                     </p>
                 </div>
 
@@ -238,8 +262,8 @@ export default function SettingsModal({ onClose }) {
                     <button className="settings-cancel-btn" onClick={onClose}>
                         Cancel
                     </button>
-                    <button className="settings-save-btn" onClick={handleSave}>
-                        {saved ? '✓ Saved!' : 'Save'}
+                    <button className="settings-save-btn" onClick={handleSave} disabled={keySyncStatus === 'syncing'}>
+                        {keySyncStatus === 'syncing' ? 'Syncing...' : saved ? '✓ Saved!' : 'Save'}
                     </button>
                 </div>
             </div>

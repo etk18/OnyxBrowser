@@ -82,3 +82,29 @@ class MemoryIngestRequest(BaseModel):
     url: str = Field(..., min_length=1, description="The page URL.")
     title: str = Field(default="", description="The page title.")
     content: str = Field(..., min_length=1, description="Truncated body text of the page.")
+
+
+# ── Omnibox Command Models ────────────────────────────────────
+
+
+class OmniboxCommandRequest(BaseModel):
+    """Payload sent by the Agentic Omnibox for /command execution."""
+
+    command: str = Field(..., min_length=1, description="The raw /command string (e.g. '/summarize this page').")
+    current_url: str = Field(default="", description="The URL of the active tab.")
+    tab_id: int = Field(default=0, description="The active tab ID.")
+    context: str = Field(default="", description="Extracted page text from the active tab (up to 15k chars).")
+    dom_map: str = Field(default="", description="JSON array of interactive DOM elements with data-onyx-id tags.")
+
+
+class APIKeyPayload(BaseModel):
+    """Payload for saving an LLM API key from the Settings UI."""
+
+    provider: str = Field(..., min_length=1, description="LLM provider name (e.g. 'groq', 'openai').")
+    api_key: str = Field(..., description="The API key value. Empty string to clear.")
+
+
+class MemorySearchRequest(BaseModel):
+    """Payload for semantic memory search."""
+
+    query: str = Field(..., min_length=1, description="Natural-language search query.")

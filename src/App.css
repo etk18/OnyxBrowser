@@ -90,7 +90,279 @@ body,
 
 
 /* ═══════════════════════════════════════════════════════════
-   PART 4: THE LAYOUT — Top Bar (80px Glass Header)
+   PART 4A: THE TAB STRIP — Horizontal Pill Tabs (40px)
+   ═══════════════════════════════════════════════════════════ */
+
+.tab-strip {
+  display: flex;
+  align-items: center;
+  height: 40px;
+  min-height: 40px;
+  padding: 0 12px 0 0; /* OS spacer handles left padding now */
+  gap: 4px;
+  background: #0d0d0f;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  position: relative;
+  z-index: 1001;
+  flex-shrink: 0;
+  -webkit-app-region: drag;
+}
+
+.tab-strip-drag {
+  position: absolute;
+  inset: 0;
+  -webkit-app-region: drag;
+  pointer-events: none;
+}
+
+.tab-strip-tabs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-app-region: no-drag;
+}
+
+.tab-strip-tabs::-webkit-scrollbar { display: none; }
+
+.tab-strip-os-spacer {
+  width: 90px;
+  min-width: 90px;
+  height: 100%;
+  flex-shrink: 0;
+  -webkit-app-region: drag;
+}
+
+/* ── Pill-shaped Tab ── */
+.tab-pill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 8px 8px 0 0;
+  background: transparent;
+  color: #52525b;
+  cursor: pointer;
+  font-family: var(--font-main);
+  font-size: 11.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  max-width: 240px;
+  min-width: 120px;
+  flex-shrink: 1;
+  transition: all 0.2s ease-out;
+  -webkit-app-region: no-drag;
+  position: relative;
+}
+
+.tab-pill:hover {
+  background: #1a1a1e;
+  color: #a1a1aa;
+}
+
+.tab-pill-active {
+  background: #1c1c20;
+  color: #e4e4e7;
+  border-top: 2px solid var(--accent-primary);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  font-weight: 600;
+  min-width: 140px;
+}
+
+.tab-pill-active:hover {
+  background: #222226;
+  color: #fff;
+}
+
+.tab-pill-incognito.tab-pill-active {
+  border-top-color: #a78bfa;
+}
+
+.tab-pill-crashed {
+  color: #ef4444;
+  opacity: 0.7;
+}
+
+.tab-pill-crashed.tab-pill-active {
+  border-top-color: #ef4444;
+}
+
+.tab-pill-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+}
+
+.tab-pill-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tab-pill-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  opacity: 0;
+  color: #71717a;
+  transition: all 0.2s ease-out;
+}
+
+.tab-pill:hover .tab-pill-close { opacity: 1; }
+.tab-pill-active .tab-pill-close { opacity: 0.6; }
+.tab-pill-active:hover .tab-pill-close { opacity: 1; }
+
+.tab-pill-close:hover {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+}
+
+.spinner-xs {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid rgba(255, 255, 255, 0.1);
+  border-top-color: var(--accent-primary);
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+/* New tab button */
+.tab-strip-new {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #52525b;
+  cursor: pointer;
+  flex-shrink: 0;
+  margin-left: 2px;
+  transition: all 0.2s ease-out;
+  -webkit-app-region: no-drag;
+}
+
+.tab-strip-new:hover {
+  background: #1a1a1e;
+  color: var(--accent-primary);
+  transform: scale(1.08);
+}
+
+.tab-strip-new-disabled {
+  pointer-events: none;
+  opacity: 0.4;
+}
+
+.tab-strip-ghost {
+  display: flex;
+  align-items: center;
+  color: #a78bfa;
+  margin-left: auto;
+  flex-shrink: 0;
+  -webkit-app-region: no-drag;
+}
+
+
+/* ═══════════════════════════════════════════════════════════
+   PART 4B: THE NAVIGATION BAR — Agentic Omnibox (50px)
+   ═══════════════════════════════════════════════════════════ */
+
+.navbar {
+  display: flex;
+  align-items: center;
+  height: 50px;
+  min-height: 50px;
+  padding: 0 16px;
+  gap: 10px;
+  background: #18181b;
+  border-bottom: 1px solid #27272a;
+  z-index: 1000;
+  flex-shrink: 0;
+}
+
+.navbar-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.navbar-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+/* Smaller nav buttons for the toolbar */
+.nav-btn-sm {
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-sm);
+}
+
+/* BETA badge — smaller for navbar */
+.navbar-beta {
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 1.2px;
+  color: #0ef;
+  background: rgba(0, 238, 255, 0.08);
+  border: 1px solid rgba(0, 238, 255, 0.25);
+  border-radius: 5px;
+  padding: 2px 6px;
+  cursor: pointer;
+  animation: betaPulse 2.5s ease-in-out infinite;
+  transition: background 0.2s;
+}
+
+.navbar-beta:hover {
+  background: rgba(0, 238, 255, 0.15);
+  border-color: rgba(0, 238, 255, 0.5);
+}
+
+/* Ghost badge for incognito */
+.navbar-ghost-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 1.2px;
+  color: #a78bfa;
+  background: rgba(139, 92, 246, 0.08);
+  border: 1px solid rgba(139, 92, 246, 0.25);
+  border-radius: 5px;
+  padding: 2px 6px;
+  animation: ghostPulse 2.5s ease-in-out infinite;
+}
+
+/* Override omnibox in navbar context — wider */
+.navbar .omnibox {
+  max-width: none;
+  flex: 1;
+  height: 36px;
+}
+
+
+/* ═══════════════════════════════════════════════════════════
+   PART 4 (LEGACY): THE TOP BAR — kept for backward compat
    ═══════════════════════════════════════════════════════════ */
 
 .topbar {
@@ -151,6 +423,31 @@ body,
 @keyframes betaPulse {
   0%, 100% { box-shadow: 0 0 4px rgba(0, 238, 255, 0.3); }
   50% { box-shadow: 0 0 10px rgba(0, 238, 255, 0.6); }
+}
+
+/* ── TopBar Incognito Mode ── */
+.topbar-incognito {
+  border-bottom-color: rgba(139, 92, 246, 0.15);
+}
+
+.topbar-incognito-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1.2px;
+  color: #a78bfa;
+  background: rgba(139, 92, 246, 0.08);
+  border: 1px solid rgba(139, 92, 246, 0.25);
+  border-radius: 6px;
+  padding: 3px 7px;
+  animation: ghostPulse 2.5s ease-in-out infinite;
+}
+
+@keyframes ghostPulse {
+  0%, 100% { box-shadow: 0 0 4px rgba(139, 92, 246, 0.3); }
+  50% { box-shadow: 0 0 10px rgba(139, 92, 246, 0.6); }
 }
 
 /* Menu Group (Right) */
@@ -479,8 +776,8 @@ body,
 .menu-backdrop {
   position: fixed;
   inset: 0;
-  top: 80px;
-  /* Match new topbar height */
+  top: 90px;
+  /* 40px tab strip + 50px navbar */
   background: rgba(0, 0, 0, 0.5);
   backdrop-filter: blur(4px);
   z-index: 998;
@@ -504,8 +801,8 @@ body,
 
 .menu-panel {
   position: absolute;
-  top: 80px;
-  /* Match new topbar height */
+  top: 90px;
+  /* 40px tab strip + 50px navbar */
   right: 0;
   bottom: 0;
   width: 400px;
@@ -644,6 +941,25 @@ body,
   background: rgba(255, 69, 58, 0.1);
   border-color: rgba(255, 69, 58, 0.4);
   color: #fca5a5;
+}
+
+/* Section actions row (New Tab + Stealth side-by-side) */
+.menu-section-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Incognito quick-launch button */
+.menu-action-incognito {
+  color: #a78bfa !important;
+  border-color: rgba(139, 92, 246, 0.2) !important;
+}
+
+.menu-action-incognito:hover {
+  background: rgba(139, 92, 246, 0.1) !important;
+  border-color: rgba(139, 92, 246, 0.4) !important;
+  color: #c4b5fd !important;
 }
 
 /* Scrollable list */
@@ -1651,6 +1967,211 @@ body,
   font-size: 14px;
 }
 
+/* ── Tab Crash Overlay ── */
+.tab-crash-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #0a0a0c;
+  z-index: 50;
+}
+
+.tab-crash-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  text-align: center;
+  max-width: 360px;
+}
+
+.tab-crash-content h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #e4e4e7;
+}
+
+.tab-crash-content p {
+  margin: 0;
+  font-size: 13px;
+  color: #71717a;
+  line-height: 1.5;
+}
+
+.tab-crash-reload {
+  margin-top: 8px;
+  padding: 8px 24px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  color: #e4e4e7;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease-out;
+}
+
+.tab-crash-reload:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: var(--accent-primary);
+  color: #fff;
+}
+
+
+/* ═══════════════════════════════════════════════════════════
+   AGENT OVERLAY — Agentic Omnibox Response Panel
+   ═══════════════════════════════════════════════════════════ */
+
+.agent-overlay {
+  position: absolute;
+  top: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 75%;
+  max-width: 640px;
+  z-index: 1050;
+  background: rgba(9, 9, 11, 0.92);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(34, 211, 238, 0.2);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.03);
+  overflow: hidden;
+  animation: agent-slide-in 0.25s ease-out;
+}
+
+@keyframes agent-slide-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(-8px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+.agent-overlay-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.agent-overlay-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--accent-primary);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  flex-shrink: 0;
+}
+
+.agent-overlay-cmd {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #71717a;
+  font-size: 12px;
+  font-family: var(--font-mono, 'SF Mono', 'Fira Code', monospace);
+}
+
+.agent-overlay-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: #52525b;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+}
+
+.agent-overlay-close:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #e4e4e7;
+}
+
+.agent-overlay-body {
+  padding: 14px 16px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+/* Thinking state — pulsing dots */
+.agent-thinking {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.agent-thinking-dots {
+  display: flex;
+  gap: 4px;
+}
+
+.agent-thinking-dots span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent-primary);
+  animation: agent-dot-pulse 1.2s ease-in-out infinite;
+}
+
+.agent-thinking-dots span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.agent-thinking-dots span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes agent-dot-pulse {
+  0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); }
+  40% { opacity: 1; transform: scale(1.2); }
+}
+
+.agent-thinking-text {
+  color: #a1a1aa;
+  font-size: 13px;
+  font-style: italic;
+}
+
+/* Response state */
+.agent-response {
+  color: #d4d4d8;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.agent-text {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.agent-error {
+  margin: 0;
+  color: #ef4444;
+}
+
+.agent-action-badge {
+  margin-top: 10px;
+  padding: 4px 10px;
+  display: inline-block;
+  border-radius: 6px;
+  background: rgba(34, 211, 238, 0.1);
+  border: 1px solid rgba(34, 211, 238, 0.2);
+  color: var(--accent-primary);
+  font-size: 11px;
+  font-weight: 500;
+}
+
 
 /* ═══════════════════════════════════════════════════════════
    HISTORY PAGE (Full-page Internal View)
@@ -1952,6 +2473,48 @@ body,
 
 .menu-nav-incognito:hover {
   background: rgba(88, 86, 214, 0.12) !important;
+}
+
+/* Incognito Tab Item — Subtle stealth tint */
+.menu-tab-incognito {
+  background: rgba(139, 92, 246, 0.04);
+  border-left: 2px solid rgba(139, 92, 246, 0.25);
+}
+
+.menu-tab-incognito .menu-tab-icon {
+  color: #a78bfa;
+}
+
+.menu-tab-incognito .menu-tab-title {
+  color: #c4b5fd;
+}
+
+.menu-tab-incognito .menu-tab-url {
+  color: rgba(167, 139, 250, 0.45);
+}
+
+.menu-tab-incognito:hover {
+  background: rgba(139, 92, 246, 0.08);
+  border-color: rgba(139, 92, 246, 0.35);
+}
+
+/* Active Incognito Tab — Neon Purple glow (replaces the cyan) */
+.menu-tab-incognito-active {
+  background: rgba(139, 92, 246, 0.1) !important;
+  border: 1px solid rgba(139, 92, 246, 0.4) !important;
+  border-left: 2px solid rgba(139, 92, 246, 0.6) !important;
+  color: #c4b5fd !important;
+  box-shadow: 0 0 24px rgba(139, 92, 246, 0.12);
+}
+
+.menu-tab-incognito-active .menu-tab-title {
+  color: #c4b5fd !important;
+  font-weight: 600;
+}
+
+.menu-tab-incognito-active .menu-tab-icon {
+  color: #a78bfa !important;
+  filter: drop-shadow(0 0 8px rgba(139, 92, 246, 0.6));
 }
 
 
@@ -2719,6 +3282,44 @@ body,
   border-top: 1px solid rgba(255, 107, 107, 0.15);
   text-align: center;
 }
+.ai-sidebar-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px 8px;
+  flex-shrink: 0;
+  border-top: 1px solid rgba(255,255,255,0.06);
+}
+
+.ai-memory-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(0,242,234,0.08);
+  border: 1px solid rgba(0,242,234,0.2);
+  border-radius: 8px;
+  color: #00f2ea;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  letter-spacing: 0.3px;
+}
+
+.ai-memory-btn:hover {
+  background: rgba(0,242,234,0.15);
+  border-color: rgba(0,242,234,0.4);
+  box-shadow: 0 0 12px rgba(0,242,234,0.12);
+}
+
+.ai-sidebar-version-text {
+  font-size: 10px;
+  color: #0ef;
+  opacity: 0.6;
+  letter-spacing: 0.8px;
+}
+
 .ai-sidebar-version {
   text-align: center;
   font-size: 10px;

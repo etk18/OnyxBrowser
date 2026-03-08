@@ -23,7 +23,7 @@ import useVoiceCommand from '../hooks/useVoiceCommand';
  * - currentUrl: string (URL of the active tab)
  */
 
-export default function AISidebar({ isOpen, onClose, currentWebContentsId, currentUrl }) {
+export default function AISidebar({ isOpen, onClose, currentWebContentsId, currentUrl, onNavigate }) {
     const [messages, setMessages] = useState([
         { role: 'ai', text: "⚡ **Onyx Intelligence** ready.\n\nI can browse for you autonomously. Try:\n• \"Open Amazon and search for headphones\"\n• \"Summarize this page\"\n• \"Click the Sign In button\"" }
     ]);
@@ -379,7 +379,16 @@ export default function AISidebar({ isOpen, onClose, currentWebContentsId, curre
                 )}
             </div>
 
-            <div className="ai-sidebar-version">v0.1.0-beta</div>
+            <div className="ai-sidebar-footer">
+                <button className="ai-memory-btn" onClick={() => { if (onNavigate) onNavigate('onyx://memory'); onClose(); }} title="Open Memory Dashboard">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <circle cx="12" cy="12" r="10" />
+                        <path d="M12 6v6l4 2" />
+                    </svg>
+                    Memory
+                </button>
+                <span className="ai-sidebar-version-text">v0.1.0-beta</span>
+            </div>
         </div>
     );
 }

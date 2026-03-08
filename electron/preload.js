@@ -123,4 +123,86 @@ contextBridge.exposeInMainWorld('browserAPI', {
     return () => ipcRenderer.removeListener('wallet-connection-request', handler);
   },
   sendWalletResponse: (response) => ipcRenderer.invoke('wallet-connection-response', response),
+
+  // ── WebContentsView Tab Management ──
+
+  // Tab lifecycle
+  createView: (tabId, url, isIncognito) => ipcRenderer.invoke('tab-create', { tabId, url, isIncognito }),
+  closeView: (tabId) => ipcRenderer.invoke('tab-close', { tabId }),
+  switchView: (tabId, isInternalPage) => ipcRenderer.invoke('tab-switch', { tabId, isInternalPage }),
+
+  // Navigation
+  navigateView: (tabId, url) => ipcRenderer.invoke('tab-navigate', { tabId, url }),
+  goBackView: (tabId) => ipcRenderer.invoke('tab-go-back', { tabId }),
+  goForwardView: (tabId) => ipcRenderer.invoke('tab-go-forward', { tabId }),
+  reloadView: (tabId) => ipcRenderer.invoke('tab-reload', { tabId }),
+
+  // Bounds (fire-and-forget, no response needed)
+  updateViewBounds: (menuOpen, aiOpen) => ipcRenderer.send('update-tab-bounds', { menuOpen, aiOpen }),
+
+  // Find in page
+  findInPage: (tabId, text, options) => ipcRenderer.invoke('tab-find-in-page', { tabId, text, options }),
+  stopFindInPage: (tabId, action) => ipcRenderer.invoke('tab-stop-find-in-page', { tabId, action }),
+
+  // Zoom
+  setZoomLevel: (tabId, level) => ipcRenderer.invoke('tab-set-zoom-level', { tabId, level }),
+  getZoomLevel: (tabId) => ipcRenderer.invoke('tab-get-zoom-level', { tabId }),
+
+  // Nav state query
+  getNavState: (tabId) => ipcRenderer.invoke('tab-get-nav-state', { tabId }),
+
+  // Tab event listeners (each returns a cleanup function)
+  onTabDidNavigate: (cb) => {
+    const h = (_e, d) => cb(d);
+    ipcRenderer.on('tab-did-navigate', h);
+    return () => ipcRenderer.removeListener('tab-did-navigate', h);
+  },
+  onTabDidNavigateInPage: (cb) => {
+    const h = (_e, d) => cb(d);
+    ipcRenderer.on('tab-did-navigate-in-page', h);
+    return () => ipcRenderer.removeListener('tab-did-navigate-in-page', h);
+  },
+  onTabTitleUpdated: (cb) => {
+    const h = (_e, d) => cb(d);
+    ipcRenderer.on('tab-title-updated', h);
+    return () => ipcRenderer.removeListener('tab-title-updated', h);
+  },
+  onTabFaviconUpdated: (cb) => {
+    const h = (_e, d) => cb(d);
+    ipcRenderer.on('tab-favicon-updated', h);
+    return () => ipcRenderer.removeListener('tab-favicon-updated', h);
+  },
+  onTabLoadingChanged: (cb) => {
+    const h = (_e, d) => cb(d);
+    ipcRenderer.on('tab-loading-changed', h);
+    return () => ipcRenderer.removeListener('tab-loading-changed', h);
+  },
+  onTabNavState: (cb) => {
+    const h = (_e, d) => cb(d);
+    ipcRenderer.on('tab-nav-state', h);
+    return () => ipcRenderer.removeListener('tab-nav-state', h);
+  },
+  onTabFoundInPage: (cb) => {
+    const h = (_e, d) => cb(d);
+    ipcRenderer.on('tab-found-in-page', h);
+    return () => ipcRenderer.removeListener('tab-found-in-page', h);
+  },
+  onNativeZoomChanged: (cb) => {
+    const h = (_e, d) => cb(d);
+    ipcRenderer.on('native-zoom-changed', h);
+    return () => ipcRenderer.removeListener('native-zoom-changed', h);
+  },
+  onTabCrashed: (cb) => {
+    const h = (_e, d) => cb(d);
+    ipcRenderer.on('tab-crashed', h);
+    return () => ipcRenderer.removeListener('tab-crashed', h);
+  },
+
+  // Agentic Omnibox — /command execution
+  executeAgentCommand: (command, tabId) => ipcRenderer.invoke('execute-agent-command', { command, tabId }),
+  onAgentNavigateUrl: (cb) => {
+    const h = (_e, d) => cb(d);
+    ipcRenderer.on('agent-navigate-url', h);
+    return () => ipcRenderer.removeListener('agent-navigate-url', h);
+  },
 });

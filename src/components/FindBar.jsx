@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 
-export default function FindBar({ webview, onClose }) {
+export default function FindBar({ tabId, onClose }) {
     const [query, setQuery] = useState('');
     const [matchInfo, setMatchInfo] = useState(null); // { activeMatchOrdinal, matches }
     const inputRef = useRef(null);
@@ -10,39 +10,38 @@ export default function FindBar({ webview, onClose }) {
         inputRef.current?.focus();
     }, []);
 
-    // Listen for found-in-page events from the webview
+    // Listen for found-in-page events via IPC
     useEffect(() => {
-        if (!webview) return;
-        const handler = (e) => {
-            if (e.result) {
+        if (!window.browserAPI?.onTabFoundInPage) return;
+        const unsub = window.browserAPI.onTabFoundInPage((data) => {
+            if (data.tabId === tabId && data.result) {
                 setMatchInfo({
-                    activeMatchOrdinal: e.result.activeMatchOrdinal,
-                    matches: e.result.matches,
+                    activeMatchOrdinal: data.result.activeMatchOrdinal,
+                    matches: data.result.matches,
                 });
             }
-        };
-        webview.addEventListener('found-in-page', handler);
-        return () => webview.removeEventListener('found-in-page', handler);
-    }, [webview]);
+        });
+        return () => unsub();
+    }, [tabId]);
 
     // Clear matches when query clears
     useEffect(() => {
         if (!query) {
             setMatchInfo(null);
-            if (webview) webview.stopFindInPage('clearSelection');
+            if (tabId) window.browserAPI?.stopFindInPage(tabId, 'clearSelection');
         }
-    }, [query, webview]);
+    }, [query, tabId]);
 
     const findNext = (forward = true) => {
-        if (!webview || !query) return;
-        webview.findInPage(query, { forward, findNext: true });
+        if (!tabId || !query) return;
+        window.browserAPI.findInPage(tabId, query, { forward, findNext: true });
     };
 
     const handleInputChange = (e) => {
         const text = e.target.value;
         setQuery(text);
-        if (text && webview) {
-            webview.findInPage(text);
+        if (text && tabId) {
+            window.browserAPI.findInPage(tabId, text, {});
         }
     };
 
@@ -58,7 +57,7 @@ export default function FindBar({ webview, onClose }) {
     };
 
     const handleClose = () => {
-        if (webview) webview.stopFindInPage('clearSelection');
+        if (tabId) window.browserAPI?.stopFindInPage(tabId, 'clearSelection');
         onClose();
     };
 

@@ -75,6 +75,7 @@ def search_history(query: str, n_results: int = 3) -> list[dict]:
         meta = results["metadatas"][0][i]
         hits.append(
             {
+                "id": doc_id,
                 "url": meta.get("url", ""),
                 "title": meta.get("title", ""),
                 "snippet": (results["documents"][0][i] or "")[:300],
@@ -82,3 +83,39 @@ def search_history(query: str, n_results: int = 3) -> list[dict]:
             }
         )
     return hits
+
+
+def get_all_memories(limit: int = 50) -> list[dict]:
+    """Return the most recent documents from the collection."""
+    count = _collection.count()
+    if count == 0:
+        return []
+
+    results = _collection.get(
+        limit=min(limit, count),
+        include=["documents", "metadatas"],
+    )
+
+    items: list[dict] = []
+    for i, doc_id in enumerate(results["ids"]):
+        meta = results["metadatas"][i] or {}
+        items.append(
+            {
+                "id": doc_id,
+                "url": meta.get("url", ""),
+                "title": meta.get("title", ""),
+                "snippet": (results["documents"][i] or "")[:300],
+            }
+        )
+    return items
+
+
+def delete_memory(doc_id: str) -> bool:
+    """Delete a single document from the collection by ID."""
+    try:
+        _collection.delete(ids=[doc_id])
+        logger.info("Deleted memory id=%s", doc_id[:12])
+        return True
+    except Exception as exc:
+        logger.error("Failed to delete memory id=%s: %s", doc_id[:12], exc)
+        return False

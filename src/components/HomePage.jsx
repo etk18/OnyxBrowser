@@ -19,7 +19,7 @@ function isUrl(input) {
     return false;
 }
 
-export default function HomePage({ onNavigate }) {
+export default function HomePage({ onNavigate, isIncognito }) {
     const [query, setQuery] = useState('');
     const [focused, setFocused] = useState(false);
     const inputRef = useRef(null);
@@ -50,19 +50,19 @@ export default function HomePage({ onNavigate }) {
     const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
 
     return (
-        <div className="homepage">
+        <div className={`homepage ${isIncognito ? 'homepage-incognito' : ''}`}>
             {/* Ambient glow background */}
-            <div className="homepage-glow homepage-glow-1" />
-            <div className="homepage-glow homepage-glow-2" />
+            <div className={`homepage-glow ${isIncognito ? 'homepage-glow-incognito-1' : 'homepage-glow-1'}`} />
+            <div className={`homepage-glow ${isIncognito ? 'homepage-glow-incognito-2' : 'homepage-glow-2'}`} />
 
             <div className="homepage-content">
                 {/* Brand */}
-                <h1 className="homepage-brand">ONYX</h1>
-                <p className="homepage-subtitle">Onyx Intelligence | Public Beta</p>
+                <h1 className={`homepage-brand ${isIncognito ? 'homepage-brand-incognito' : ''}`}>{isIncognito ? 'GHOST' : 'ONYX'}</h1>
+                <p className="homepage-subtitle">{isIncognito ? 'Incognito Mode | No History Saved' : 'Onyx Intelligence | Public Beta'}</p>
 
                 {/* Search Bar */}
                 <form className="homepage-search-form" onSubmit={handleSubmit}>
-                    <div className={`homepage-search-wrapper ${focused ? 'homepage-search-focused' : ''}`}>
+                    <div className={`homepage-search-wrapper ${focused ? (isIncognito ? 'homepage-search-focused-incognito' : 'homepage-search-focused') : ''}`}>
                         <svg className="homepage-search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none">
                             <circle cx="11" cy="11" r="8" stroke="currentColor" strokeWidth="2" />
                             <path d="M21 21l-4.35-4.35" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
@@ -112,12 +112,14 @@ export default function HomePage({ onNavigate }) {
 
             {/* Footer */}
             <div className="homepage-footer">
-                <button className="homepage-whatsnew" onClick={() => onNavigate('onyx://ledger')}>
-                    <span className="homepage-whatsnew-dot" />
-                    What's New in v0.1.0
-                </button>
+                {!isIncognito && (
+                    <button className="homepage-whatsnew" onClick={() => onNavigate('onyx://ledger')}>
+                        <span className="homepage-whatsnew-dot" />
+                        What's New in v0.1.0
+                    </button>
+                )}
                 <div style={{ marginTop: 8 }}>
-                    <span>OnyxBrowser | Public Beta v0.1.0</span>
+                    <span>{isIncognito ? 'Incognito Session | Data stays in RAM' : 'OnyxBrowser | Public Beta v0.1.0'}</span>
                 </div>
             </div>
         </div>

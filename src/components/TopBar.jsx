@@ -27,15 +27,26 @@ function TopBar({
     isIncognito,
 }) {
     return (
-        <header className="topbar">
+        <header className={`topbar ${isIncognito ? 'topbar-incognito' : ''}`}>
             {/* macOS drag region */}
             <div className="topbar-drag" />
 
             {/* Left: Navigation Group */}
             <div className="topbar-nav-group">
-                <button className="topbar-beta-badge" onClick={() => onNavigate('onyx://ledger')} title="What's New in v0.1.0">
-                    BETA
-                </button>
+                {isIncognito ? (
+                    <span className="topbar-incognito-badge" title="Incognito Mode — No history saved">
+                        <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                            <circle cx="8" cy="6" r="3" stroke="currentColor" strokeWidth="1.3" />
+                            <path d="M3 6H13" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+                            <path d="M5 9C5 9 6 14 8 14C10 14 11 9 11 9" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+                        </svg>
+                        GHOST
+                    </span>
+                ) : (
+                    <button className="topbar-beta-badge" onClick={() => onNavigate('onyx://ledger')} title="What's New in v0.1.0">
+                        BETA
+                    </button>
+                )}
                 <button className="nav-btn" onClick={onBack} disabled={!canGoBack} title="Back">
                     <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
                         <path d="M11 4L6 9L11 14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />

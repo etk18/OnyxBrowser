@@ -6,7 +6,7 @@ import React, { useRef, useState, useEffect, memo } from 'react';
  * Shield icon shows ad-blocker count. Lock icon shows security status.
  */
 
-function Omnibox({ currentUrl, isLoading, onNavigate, blockedCount, securityStatus }) {
+function Omnibox({ currentUrl, isLoading, onNavigate, onAgentCommand, blockedCount, securityStatus }) {
     const inputRef = useRef(null);
     const [showCertPopover, setShowCertPopover] = useState(false);
 
@@ -17,14 +17,75 @@ function Omnibox({ currentUrl, isLoading, onNavigate, blockedCount, securityStat
         }
     }, [currentUrl]);
 
+    // Detect natural language commands that should route to the AI agent
+    const isNaturalLanguageCommand = (text) => {
+        const lower = text.toLowerCase();
+        // Action verbs that signal an agent command (matches sidebar chat routing)
+        const actionPatterns = [
+            /^(open|go to|navigate to|visit)\s+/i,
+            /^search\s+(for\s+)?/i,
+            /^(find|look up|look for)\s+/i,
+            /^(summarize|summarise|sum up)\s*(this|the|current)?\s*(page)?/i,
+            /^ask\s+/i,
+            /^click\s+/i,
+            /^(what|how|why|when|where|who|which|is|are|can|does|do|tell me|explain|describe)\s+/i,
+        ];
+        return actionPatterns.some((p) => p.test(lower));
+    };
+
+    // Convert natural language to a /command for the agent
+    const toAgentCommand = (text) => {
+        const lower = text.toLowerCase();
+        if (/^(open|go to|navigate to|visit)\s+/i.test(lower)) {
+            const target = text.replace(/^(open|go to|navigate to|visit)\s+/i, '').trim();
+            return `/open ${target}`;
+        }
+        if (/^search\s+(for\s+)?/i.test(lower)) {
+            const query = text.replace(/^search\s+(for\s+)?/i, '').trim();
+            return `/search ${query}`;
+        }
+        if (/^(find|look up|look for)\s+/i.test(lower)) {
+            const query = text.replace(/^(find|look up|look for)\s+/i, '').trim();
+            return `/search ${query}`;
+        }
+        if (/^(summarize|summarise|sum up)\s*/i.test(lower)) {
+            return '/summarize';
+        }
+        if (/^ask\s+/i.test(lower)) {
+            const question = text.replace(/^ask\s+/i, '').trim();
+            return `/ask ${question}`;
+        }
+        if (/^click\s+/i.test(lower)) {
+            const target = text.replace(/^click\s+/i, '').trim();
+            return `/click ${target}`;
+        }
+        // Question patterns → /ask
+        if (/^(what|how|why|when|where|who|which|is|are|can|does|do|tell me|explain|describe)\s+/i.test(lower)) {
+            return `/ask ${text}`;
+        }
+        return text;
+    };
+
     const handleKeyDown = (e) => {
         if (e.key === 'Enter') {
             const raw = inputRef.current.value.trim();
             if (raw) {
-                // Pass raw input to App's handleNavigate which handles
-                // URL detection, search engine routing, and https:// prepending
-                onNavigate(raw);
-                inputRef.current.blur();
+                if (raw.startsWith('/') && onAgentCommand) {
+                    // Slash command — route to AI agent
+                    e.preventDefault();
+                    onAgentCommand(raw);
+                    inputRef.current.blur();
+                } else if (onAgentCommand && isNaturalLanguageCommand(raw)) {
+                    // Natural language command — convert to /command and route to AI
+                    e.preventDefault();
+                    onAgentCommand(toAgentCommand(raw));
+                    inputRef.current.blur();
+                } else {
+                    // Pass raw input to App's handleNavigate which handles
+                    // URL detection, search engine routing, and https:// prepending
+                    onNavigate(raw);
+                    inputRef.current.blur();
+                }
             }
         }
         if (e.key === 'Escape') {
@@ -128,7 +189,7 @@ function Omnibox({ currentUrl, isLoading, onNavigate, blockedCount, securityStat
                 defaultValue={currentUrl}
                 onKeyDown={handleKeyDown}
                 onFocus={handleFocus}
-                placeholder="Search Google or type a URL"
+                placeholder="Search, enter URL, or ask Onyx anything"
                 spellCheck={false}
                 autoComplete="off"
             />

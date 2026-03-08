@@ -1,15 +1,31 @@
-const { app, BrowserWindow, Menu, ipcMain, session, dialog } = require('electron');
+const { app, BrowserWindow, WebContentsView, Menu, ipcMain, session, dialog } = require('electron');
 const path = require('path');
 const { ElectronBlocker } = require('@cliqz/adblocker-electron');
 const { Request: AdblockerRequest } = require('@cliqz/adblocker');
 const fetch = require('cross-fetch');
+const TabManager = require('./tab-manager');
 
-// ── Rust-powered Onyx Shield Engine (NAPI-RS) ──
+// ── Rust-powered Onyx Shield Engine (Brave adblock crate) ──
 let rustShield = null;
 try {
-  const { ShieldEngine } = require('../onyx-shield');
+  // Try multiple resolution paths for packaged app compatibility (ASAR, Windows)
+  let ShieldEngine;
+  try {
+    // Standard dev path
+    ShieldEngine = require('../onyx-shield').ShieldEngine;
+  } catch {
+    // Packaged app: try app.asar.unpacked (native modules can't live in ASAR)
+    try {
+      const unpackedPath = path.join(__dirname, '..', '..', 'app.asar.unpacked', 'onyx-shield');
+      ShieldEngine = require(unpackedPath).ShieldEngine;
+    } catch {
+      // Last resort: resolve relative to app resources dir
+      const resourcePath = path.join(process.resourcesPath || '', 'onyx-shield');
+      ShieldEngine = require(resourcePath).ShieldEngine;
+    }
+  }
   rustShield = new ShieldEngine();
-  console.log(`[OnyxShield] Rust engine loaded — ${rustShield.domainCount()} domains in HashSet`);
+  console.log(`[OnyxShield] Brave engine loaded — ${rustShield.filterCount()} fallback filters`);
 } catch (e) {
   console.warn('[OnyxShield] Rust native module not available, falling back to Cliqz only:', e.message);
 }
@@ -77,6 +93,7 @@ app.commandLine.appendSwitch('ignore-gpu-blacklist');
 // app.commandLine.appendSwitch('disable-frame-rate-limit');
 
 let mainWindow = null;
+let tabManager = null;
 let store = null;
 let blocker = null;
 let blockedCount = 0;
@@ -152,30 +169,10 @@ function createWindow() {
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: { x: 16, y: 16 },
     webPreferences: {
-      webviewTag: true,
       nodeIntegration: false,
       contextIsolation: true,
       preload: path.join(__dirname, 'preload.js'),
     },
-  });
-
-  // ── Webview security: validate preload paths ──
-  const allowedPreload = path.resolve(__dirname, 'webview-preload.js');
-  mainWindow.webContents.on('will-attach-webview', (_event, webPreferences) => {
-    // Normalize: Electron may pass the path with or without file:// prefix
-    const incomingPreload = (webPreferences.preload || '')
-      .replace(/^file:\/\//, '');
-
-    if (incomingPreload && path.resolve(incomingPreload) !== allowedPreload) {
-      console.warn('[Security] Blocked unauthorized webview preload:', webPreferences.preload);
-      delete webPreferences.preload;
-    } else if (!incomingPreload) {
-      // No preload set — inject ours for Web3 support
-      webPreferences.preload = allowedPreload;
-    }
-    // Lock down webview security
-    webPreferences.nodeIntegration = false;
-    webPreferences.contextIsolation = true;
   });
 
   // In dev, load from Vite dev server; in prod, load built files
@@ -302,95 +299,87 @@ function createWindow() {
 
 const fs = require('fs');
 const observerPath = path.join(__dirname, '..', 'src', 'adblocker', 'observer.js');
+const hijackPath = path.join(__dirname, '..', 'src', 'adblocker', 'hijack.js');
 let observerScript = '';
+let hijackScript = '';
 try {
   observerScript = fs.readFileSync(observerPath, 'utf-8');
   console.log('[AdBlocker] MutationObserver script loaded');
 } catch (err) {
   console.error('[AdBlocker] Failed to load observer script:', err.message);
 }
+try {
+  hijackScript = fs.readFileSync(hijackPath, 'utf-8');
+  console.log('[AdBlocker] Hijack script loaded');
+} catch (err) {
+  console.error('[AdBlocker] Failed to load hijack script:', err.message);
+}
+
+// Helper: Inject cosmetic filters from Brave engine + YouTube scripts
+// Tracks inserted CSS keys per webContents to properly clean up on SPA navigation
+const cosmeticCssKeys = new WeakMap(); // WeakMap<WebContents, string[]>
+
+async function injectCosmeticFilters(contents, url) {
+  if (!shieldEnabled) return;
+
+  // Remove previously injected CSS to prevent stale selectors accumulating on SPA nav
+  const prevKeys = cosmeticCssKeys.get(contents) || [];
+  for (const key of prevKeys) {
+    try { contents.removeInsertedCSS(key); } catch { }
+  }
+  const newKeys = [];
+
+  // 1. Brave engine cosmetic selectors
+  if (rustShield) {
+    try {
+      const cosmetic = rustShield.getCosmeticFilters(url);
+
+      // Inject hide selectors as CSS via native insertCSS (survives SPA nav)
+      if (cosmetic.hideSelectors && cosmetic.hideSelectors.length > 0) {
+        const css = cosmetic.hideSelectors
+          .map((sel) => `${sel} { display: none !important; }`)
+          .join('\n');
+        try {
+          const key = await contents.insertCSS(css);
+          if (key) newKeys.push(key);
+        } catch { }
+      }
+
+      // Inject style rules
+      if (cosmetic.styleSelectors && cosmetic.styleSelectors.length > 0) {
+        const css = cosmetic.styleSelectors.join('\n');
+        try {
+          const key = await contents.insertCSS(css);
+          if (key) newKeys.push(key);
+        } catch { }
+      }
+
+      // Inject scriptlets
+      if (cosmetic.injectedScript && cosmetic.injectedScript.length > 0) {
+        contents.executeJavaScript(cosmetic.injectedScript).catch(() => { });
+      }
+    } catch (e) {
+      // Silently fail — cosmetic filtering is best-effort
+    }
+  }
+
+  cosmeticCssKeys.set(contents, newKeys);
+
+  // 2. YouTube-specific scripts (idempotent — each has __aether_*_active guard)
+  if (url && url.includes('youtube.com')) {
+    if (hijackScript) {
+      contents.executeJavaScript(hijackScript).catch(() => { });
+    }
+    if (observerScript) {
+      contents.executeJavaScript(observerScript).catch(() => { });
+    }
+  }
+}
 
 app.on('web-contents-created', (_event, contents) => {
-  if (contents.getType() === 'webview') {
-    contents.on('did-finish-load', () => {
-      try {
-        const url = contents.getURL();
-        if (url && url.includes('youtube.com') && observerScript) {
-          // contents.executeJavaScript(observerScript).catch(() => { });
-          // console.log('[AdBlocker] Observer injected:', url.substring(0, 50));
-        }
-      } catch { }
-    });
-
-    // SPA navigation
-    contents.on('did-navigate-in-page', () => {
-      try {
-        const url = contents.getURL();
-        if (url && url.includes('youtube.com') && observerScript) {
-          contents.executeJavaScript(observerScript).catch(() => { });
-        }
-      } catch { }
-    });
-
-    // ── Context Menu for webview content ──
-    import('electron-context-menu').then(({ default: contextMenu }) => {
-      contextMenu({
-        window: contents,
-        showSaveImageAs: true,
-        showInspectElement: true,
-        showSearchWithGoogle: true,
-        showCopyImageAddress: true,
-        showCopyImage: true,
-        showCopyLink: true,
-        append: (_defaultActions, params) => [
-          {
-            label: 'Open in New Tab',
-            visible: params.linkURL && params.linkURL.length > 0,
-            click: () => {
-              if (mainWindow && !mainWindow.isDestroyed()) {
-                mainWindow.webContents.send('new-tab', params.linkURL);
-              }
-            },
-          },
-        ],
-      });
-      console.log('[ContextMenu] Attached to webview');
-    }).catch((err) => console.error('[ContextMenu] Webview attach failed:', err.message));
-
-    // ── Security Status (HTTPS detection) ──
-    contents.on('did-navigate', () => {
-      try {
-        const url = contents.getURL();
-        if (!url || !mainWindow || mainWindow.isDestroyed()) return;
-        const isSecure = url.startsWith('https://');
-        mainWindow.webContents.send('security-status', {
-          secure: isSecure,
-          url,
-        });
-      } catch { }
-    });
-
-    // ── Audio State Tracking ──
-    contents.on('media-started-playing', () => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('tab-audio-state', {
-          webContentsId: contents.id,
-          isPlaying: true,
-          isMuted: contents.isAudioMuted(),
-        });
-      }
-    });
-
-    contents.on('media-paused', () => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('tab-audio-state', {
-          webContentsId: contents.id,
-          isPlaying: false,
-          isMuted: contents.isAudioMuted(),
-        });
-      }
-    });
-  }
+  // Tab webContents events are now handled by TabManager.
+  // This handler only catches webContents not managed by TabManager
+  // (e.g. popup windows, devtools, etc.) — no-op for now.
 });
 
 // ── IPC Handlers ──
@@ -543,10 +532,28 @@ ipcMain.handle('get-api-key', (_event, provider) => {
   return store.get(`apiKeys.${provider}`, '');
 });
 
-ipcMain.handle('set-api-key', (_event, provider, key) => {
+ipcMain.handle('set-api-key', async (_event, provider, key) => {
   if (!store) return;
   store.set(`apiKeys.${provider}`, key || '');
   console.log(`[Settings] API key ${key ? 'saved' : 'cleared'} for: ${provider}`);
+
+  // Sync to FastAPI backend so LLM commands (/click, /summarize, /ask) work immediately
+  try {
+    const http = require('http');
+    const data = JSON.stringify({ provider, api_key: key || '' });
+    await new Promise((resolve, reject) => {
+      const req = http.request({
+        hostname: '127.0.0.1', port: 8000, path: '/api/settings/keys',
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) },
+      }, (res) => { res.resume(); resolve(res.statusCode); });
+      req.on('error', reject);
+      req.write(data);
+      req.end();
+    });
+    console.log(`[Settings] API key synced to backend for: ${provider}`);
+  } catch (err) {
+    console.warn(`[Settings] Backend sync error for ${provider}:`, err.message);
+  }
 });
 
 ipcMain.handle('get-all-api-keys', () => {
@@ -1632,7 +1639,7 @@ app.whenReady().then(async () => {
       responseHeaders: {
         ...details.responseHeaders,
         'Content-Security-Policy': [
-          "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: https://* wss://*; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://* blob:; connect-src 'self' https://* wss://*; img-src 'self' data: https://*; frame-src 'self' https://*;",
+          "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: https://* wss://*; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://* blob:; connect-src 'self' https://* wss://* http://localhost:* http://127.0.0.1:*; img-src 'self' data: https://*; font-src 'self' data: https://fonts.gstatic.com; media-src 'self' https: blob:; frame-src 'self' https://*;",
         ],
       },
     });
@@ -1644,7 +1651,431 @@ app.whenReady().then(async () => {
   // 2. Launch UI immediately
   createWindow();
 
-  // 3. Load heavy services in the background
+  // 2a. Startup sync: push any saved API keys to the FastAPI backend
+  //     (runs in background, retries until backend is reachable)
+  (async () => {
+    if (!store) return;
+    const keys = store.get('apiKeys', {});
+    const providers = Object.entries(keys).filter(([, v]) => v);
+    if (providers.length === 0) return;
+
+    const http = require('http');
+    const postKey = (provider, apiKey) => new Promise((resolve, reject) => {
+      const data = JSON.stringify({ provider, api_key: apiKey });
+      const req = http.request({
+        hostname: '127.0.0.1', port: 8000, path: '/api/settings/keys',
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) },
+      }, (res) => { res.resume(); resolve(res.statusCode); });
+      req.on('error', reject);
+      req.write(data);
+      req.end();
+    });
+    const healthCheck = () => new Promise((resolve, reject) => {
+      const req = http.get('http://127.0.0.1:8000/health', (res) => { res.resume(); resolve(res.statusCode); });
+      req.on('error', reject);
+    });
+
+    for (let attempt = 0; attempt < 15; attempt++) {
+      try { await healthCheck(); break; } catch {
+        await new Promise(r => setTimeout(r, 2000));
+        if (attempt === 14) { console.warn('[Settings] Backend not reachable, skipping key sync'); return; }
+      }
+    }
+    for (const [provider, key] of providers) {
+      try {
+        await postKey(provider, key);
+        console.log(`[Settings] Startup sync: ${provider} key pushed to backend`);
+      } catch (err) {
+        console.warn(`[Settings] Startup sync failed for ${provider}:`, err.message);
+      }
+    }
+  })();
+
+  // 2b. Initialize TabManager (WebContentsView-based tab rendering)
+  tabManager = new TabManager(mainWindow, store, {
+    injectCosmeticFilters,
+    observerScript,
+    hijackScript,
+  });
+
+  // ── Tab Manager IPC Handlers ──
+  ipcMain.handle('tab-create', (_event, { tabId, url, isIncognito }) => {
+    return tabManager.createTab(tabId, url, isIncognito);
+  });
+  ipcMain.handle('tab-close', (_event, { tabId }) => {
+    tabManager.closeTab(tabId);
+  });
+  ipcMain.handle('tab-switch', (_event, { tabId, isInternalPage }) => {
+    tabManager.switchTab(tabId, isInternalPage);
+  });
+  ipcMain.handle('tab-navigate', (_event, { tabId, url }) => {
+    tabManager.navigate(tabId, url);
+  });
+  ipcMain.handle('tab-go-back', (_event, { tabId }) => {
+    tabManager.goBack(tabId);
+  });
+  ipcMain.handle('tab-go-forward', (_event, { tabId }) => {
+    tabManager.goForward(tabId);
+  });
+  ipcMain.handle('tab-reload', (_event, { tabId }) => {
+    tabManager.reload(tabId);
+  });
+  ipcMain.handle('tab-find-in-page', (_event, { tabId, text, options }) => {
+    tabManager.findInPage(tabId, text, options);
+  });
+  ipcMain.handle('tab-stop-find-in-page', (_event, { tabId, action }) => {
+    tabManager.stopFindInPage(tabId, action);
+  });
+  ipcMain.handle('tab-set-zoom-level', (_event, { tabId, level }) => {
+    tabManager.setZoomLevel(tabId, level);
+  });
+  ipcMain.handle('tab-get-zoom-level', (_event, { tabId }) => {
+    return tabManager.getZoomLevel(tabId);
+  });
+  ipcMain.handle('tab-get-nav-state', (_event, { tabId }) => {
+    return tabManager.getNavState(tabId);
+  });
+  ipcMain.on('update-tab-bounds', (_event, { menuOpen, aiOpen }) => {
+    tabManager.updateBounds(menuOpen, aiOpen);
+  });
+
+  // ── Agentic Omnibox: /command execution via FastAPI backend ──
+  ipcMain.handle('execute-agent-command', async (_event, { command, tabId }) => {
+    try {
+      const cmd = command.trim().toLowerCase();
+
+      // ── Normalize command aliases ──
+      // Users may type /find, /go, /visit, /goto, /look — map to canonical commands.
+      let normalizedCmd = cmd;
+      let normalizedCommand = command.trim();
+      const aliasMap = [
+        { patterns: ['/find ', '/lookup ', '/look up '], canonical: '/search', sliceLengths: [6, 8, 9] },
+        { patterns: ['/go ', '/visit ', '/goto ', '/navigate '], canonical: '/open', sliceLengths: [4, 7, 6, 10] },
+      ];
+      for (const { patterns, canonical, sliceLengths } of aliasMap) {
+        for (let i = 0; i < patterns.length; i++) {
+          if (cmd.startsWith(patterns[i]) || cmd === patterns[i].trim()) {
+            const rest = command.trim().slice(sliceLengths[i]).trim();
+            normalizedCmd = `${canonical} ${rest}`.trim().toLowerCase();
+            normalizedCommand = `${canonical} ${rest}`.trim();
+            break;
+          }
+        }
+        if (normalizedCmd !== cmd) break;
+      }
+
+      // ── Local command router (no backend needed) ──
+
+      if (normalizedCmd.startsWith('/open')) {
+        const target = normalizedCommand.slice(5).trim();
+        if (!target) return { action: 'respond', text: 'Usage: /open <site or URL>  (e.g. /open youtube)' };
+        let url;
+        if (target.includes('://')) url = target;
+        else if (target.includes('.')) url = 'https://' + target;
+        else url = `https://www.${target}.com`;
+        const result = { action: 'navigate', url, text: `Navigating to ${url}` };
+        const entry = tabManager.tabs.get(tabId);
+        if (entry) {
+          entry.view.webContents.loadURL(url).catch(() => {});
+        } else {
+          mainWindow.webContents.send('agent-navigate-url', { tabId, url });
+        }
+        return result;
+      }
+
+      if (normalizedCmd.startsWith('/search')) {
+        const query = normalizedCommand.slice(7).trim();
+        if (!query) return { action: 'respond', text: 'Usage: /search <query>  (e.g. /search wikipedia for kohli)' };
+        const url = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
+        const result = { action: 'navigate', url, text: `Searching for "${query}"` };
+        const entry = tabManager.tabs.get(tabId);
+        if (entry) {
+          entry.view.webContents.loadURL(url).catch(() => {});
+        } else {
+          mainWindow.webContents.send('agent-navigate-url', { tabId, url });
+        }
+        return result;
+      }
+
+      if (normalizedCmd.startsWith('/help')) {
+        return {
+          action: 'respond',
+          text: 'Available commands:\n/open <site> \u2014 Navigate to a website (e.g. /open youtube)\n/search <query> \u2014 Search the web (e.g. /search weather today)\n/summarize \u2014 Summarize the current page\n/ask <question> \u2014 Ask a question about the page\n/click <description> \u2014 Click an element (e.g. /click Sign In button)\n/help \u2014 Show this help message',
+        };
+      }
+
+      // ── Commands that need the backend ──
+
+      let currentUrl = '';
+      try {
+        const navState = tabManager.getNavState(tabId);
+        currentUrl = navState?.url || '';
+      } catch {}
+
+      // Extract page text from the active WebContentsView for context
+      let pageContext = '';
+      let domMapJson = '[]';
+      try {
+        const wc = tabManager._wc(tabId);
+        if (wc) {
+          const rawText = await wc.executeJavaScript('document.body.innerText');
+          pageContext = (rawText || '').substring(0, 15000);
+
+          // ── Spatial DOM Tagger: tag interactive elements with data-onyx-id ──
+          // This runs for ALL backend-bound commands (especially /click) so the
+          // LLM can reference elements by their tagged IDs.
+          const domMapScript = `
+            (() => {
+              try {
+                // Clear previous tags
+                document.querySelectorAll('[data-onyx-id]').forEach(el => el.removeAttribute('data-onyx-id'));
+                const SELECTORS = 'a, button, input, textarea, select, [role="button"], [role="link"], [role="tab"], [role="menuitem"], [role="option"], [role="switch"], [role="checkbox"], [role="radio"], [role="searchbox"], [role="textbox"], [onclick], summary, label[for]';
+                const all = document.querySelectorAll(SELECTORS);
+                const map = [];
+                let id = 0;
+                const vh = window.innerHeight;
+                const vw = window.innerWidth;
+                for (let i = 0; i < all.length; i++) {
+                  const el = all[i];
+                  const rect = el.getBoundingClientRect();
+                  if (rect.width <= 0 || rect.height <= 0) continue;
+                  if (rect.bottom < -50 || rect.top > vh + 50) continue;
+                  if (rect.right < -50 || rect.left > vw + 50) continue;
+                  if (el.tagName === 'INPUT' && el.type === 'hidden') continue;
+                  const cs = window.getComputedStyle(el);
+                  if (cs.display === 'none' || cs.visibility === 'hidden' || cs.opacity === '0') continue;
+                  const text = (
+                    (el.getAttribute('aria-label') || '').trim() ||
+                    (el.placeholder || '').trim() ||
+                    (el.title || '').trim() ||
+                    (el.alt || '').trim() ||
+                    (el.value && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') ? el.value : '').trim() ||
+                    (el.innerText || '').trim().substring(0, 80) ||
+                    ''
+                  );
+                  let tag = el.tagName.toLowerCase();
+                  if (tag === 'input') tag = 'input[' + (el.type || 'text') + ']';
+                  const role = el.getAttribute('role');
+                  if (role) tag = role;
+                  el.setAttribute('data-onyx-id', String(id));
+                  const entry = { id: String(id), tag: tag, text: text.substring(0, 80) || '[no label]', type: el.type || '' };
+                  if (el.tagName === 'A' && el.getAttribute('href')) {
+                    entry.href = el.getAttribute('href').substring(0, 120);
+                  }
+                  map.push(entry);
+                  id++;
+                  if (id > 150) break;
+                }
+                return JSON.stringify(map);
+              } catch (err) {
+                return '[]';
+              }
+            })()
+          `;
+          domMapJson = await wc.executeJavaScript(domMapScript) || '[]';
+        }
+      } catch {}
+
+      let resp;
+      try {
+        resp = await require('electron').net.fetch('http://localhost:8000/api/command', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ command, current_url: currentUrl, tab_id: tabId, context: pageContext, dom_map: domMapJson }),
+        });
+      } catch (fetchErr) {
+        return { action: 'respond', error: 'Backend is not running. Start it with: cd backend && uvicorn main:app --reload --port 8000' };
+      }
+
+      if (!resp.ok) {
+        return { error: `Backend returned ${resp.status}` };
+      }
+
+      const result = await resp.json();
+
+      // ── Action Router: execute the backend's instruction ──
+
+      if (result.action === 'navigate' && result.url) {
+        const entry = tabManager.tabs.get(tabId);
+        if (entry) {
+          entry.view.webContents.loadURL(result.url).catch(() => {});
+        } else {
+          mainWindow.webContents.send('agent-navigate-url', { tabId, url: result.url });
+        }
+      } else if (result.action === 'click' && result.target_id != null) {
+        const wc = tabManager._wc(tabId);
+        if (wc) {
+          const oid = String(result.target_id);
+          const clickResult = await wc.executeJavaScript(`
+            (() => {
+              try {
+                const el = document.querySelector('[data-onyx-id="${oid}"]');
+                if (!el) return { error: "Element #${oid} not found on the page." };
+                el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                // Onyx Pulse highlight
+                el.style.outline = '2px solid #00f2ea';
+                el.style.boxShadow = '0 0 15px #00f2ea';
+                el.style.borderRadius = '4px';
+                el.style.transition = 'all 0.3s ease';
+                setTimeout(() => {
+                  el.click();
+                  setTimeout(() => {
+                    el.style.outline = '';
+                    el.style.boxShadow = '';
+                    el.style.borderRadius = '';
+                  }, 1000);
+                }, 400);
+                const label = (el.innerText || el.value || el.getAttribute('aria-label') || '#${oid}').substring(0, 60).trim();
+                return { success: true, label: label, tag: el.tagName };
+              } catch (err) {
+                return { error: err.message };
+              }
+            })()
+          `).catch(() => ({ error: 'JS execution failed' }));
+          // Enrich the result text with the click outcome
+          if (clickResult?.success) {
+            result.text = `Clicked ${clickResult.tag} "${clickResult.label}" (element #${oid}).`;
+          } else if (clickResult?.error) {
+            result.text = clickResult.error;
+          }
+        }
+      }
+
+      return result;
+    } catch (err) {
+      return { error: err.message || 'Agent command failed' };
+    }
+  });
+
+  // 3. Register ad-blocking interceptor IMMEDIATELY with fallback filters
+  //    so requests are blocked from the very first page load. The engine
+  //    will be upgraded in-place once full filter lists are downloaded.
+  {
+    const webviewSession = session.fromPartition('persist:main');
+    const filter = { urls: ['http://*/*', 'https://*/*'] };
+
+    // Map Electron resourceType → adblock request type
+    const RESOURCE_TYPE_MAP = {
+      mainFrame: 'document',
+      subFrame: 'subdocument',
+      stylesheet: 'stylesheet',
+      script: 'script',
+      image: 'image',
+      font: 'font',
+      object: 'object',
+      xhr: 'xmlhttprequest',
+      ping: 'ping',
+      media: 'media',
+      websocket: 'websocket',
+      other: 'other',
+    };
+
+    const unifiedHandler = (details, callback) => {
+      // If shield is disabled by user, pass everything through
+      if (!shieldEnabled) return callback({ cancel: false });
+
+      // ── Fast-path: never block navigation or worker frames ──
+      // Blocking these causes infinite reload loops and SPA breakage.
+      const rt = details.resourceType;
+      if (rt === 'mainFrame' || rt === 'subFrame' || rt === 'serviceWorker') {
+        return callback({ cancel: false });
+      }
+
+      // ── YouTube / video stream fast-path ──
+      // YouTube's ptracking and googlevideo streams must not be blocked or
+      // the player triggers a hard page reload. Cosmetic CSS handles UI ads.
+      const url = details.url;
+      if (url.includes('youtube.com/ptracking') ||
+          url.includes('youtube.com/api/stats/') ||
+          url.includes('googlevideo.com')) {
+        return callback({ cancel: false });
+      }
+
+      const requestType = RESOURCE_TYPE_MAP[rt] || 'other';
+
+      // ── Async timeout valve: 50ms budget for engine checks ──
+      // If the Rust + Cliqz engines can't decide within 50ms, allow the
+      // request through. A leaked tracking pixel is cheaper than a 20s hang.
+      let settled = false;
+      const settle = (result) => {
+        if (settled) return;
+        settled = true;
+        callback(result);
+      };
+
+      // Start the 50ms deadline
+      const timer = setTimeout(() => settle({ cancel: false }), 50);
+
+      // Run engine checks asynchronously via microtask
+      Promise.resolve().then(() => {
+        // Primary: Brave adblock engine (full EasyList/uBlock rules)
+        if (rustShield) {
+          try {
+            const result = rustShield.checkNetworkRequest(
+              url,
+              details.referrer || '',
+              requestType
+            );
+
+            if (result.exception) {
+              clearTimeout(timer);
+              return settle({ cancel: false });
+            }
+
+            if (result.blocked) {
+              blockedCount++;
+              if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send('ad-blocked', blockedCount);
+              }
+              clearTimeout(timer);
+              return settle({ cancel: true });
+            }
+
+            // Brave says not blocked — trust it
+            clearTimeout(timer);
+            return settle({ cancel: false });
+          } catch (e) {
+            // Rust engine error — fall through to Cliqz
+          }
+        }
+
+        // Fallback: Cliqz EasyList/EasyPrivacy filter matching
+        if (blocker) {
+          try {
+            const request = AdblockerRequest.fromRawDetails({
+              url,
+              type: rt || 'other',
+              sourceUrl: details.referrer || '',
+            });
+            const { match } = blocker.match(request);
+            if (match) {
+              blockedCount++;
+              if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send('ad-blocked', blockedCount);
+              }
+              clearTimeout(timer);
+              return settle({ cancel: true });
+            }
+          } catch (e) {
+            // Cliqz error — fall through to allow
+          }
+        }
+
+        // Neither engine blocked — allow through
+        clearTimeout(timer);
+        settle({ cancel: false });
+      });
+    };
+
+    webviewSession.webRequest.onBeforeRequest(filter, unifiedHandler);
+    // Note: Do NOT register on session.defaultSession — that session serves the
+    // BrowserWindow's renderer (React app from Vite). Intercepting it blocks
+    // the app's own JS/CSS/HMR resources and causes a blank screen.
+    // Webview content uses the 'persist:main' partition which IS intercepted above.
+    console.log(`[OnyxShield] Interceptor registered — Rust engine ${rustShield ? 'ready (' + rustShield.filterCount() + ' fallback filters)' : 'unavailable'}`);
+  }
+
+  // 4. Load heavy services in the background (upgrades engine in-place)
   (async () => {
     // ── Load uBlock Origin Extension (default session only) ──
     try {
@@ -1675,57 +2106,69 @@ app.whenReady().then(async () => {
       console.error('[AdBlocker] Failed to initialize:', err.message);
     }
 
+    // ── Download & load EasyList + uBlock Origin filter lists into Rust engine ──
+    if (rustShield) {
+      try {
+        const fsPromises = require('fs').promises;
+        const cachePath = path.join(app.getPath('userData'), 'onyx-shield-filters.json');
+        const FILTER_URLS = [
+          'https://easylist.to/easylist/easylist.txt',
+          'https://easylist.to/easylist/easyprivacy.txt',
+          'https://raw.githubusercontent.com/nickkelly1/nickkelly.github.io/refs/heads/master/nicktrackerblock/filterlist.txt',
+        ];
+
+        let filterTexts = [];
+        let usedCache = false;
+
+        // Try loading from cache first (< 24h old)
+        try {
+          const stat = await fsPromises.stat(cachePath);
+          const ageMs = Date.now() - stat.mtimeMs;
+          if (ageMs < 24 * 60 * 60 * 1000) {
+            const cached = JSON.parse(await fsPromises.readFile(cachePath, 'utf-8'));
+            if (Array.isArray(cached) && cached.length > 0) {
+              filterTexts = cached;
+              usedCache = true;
+              console.log(`[OnyxShield] Loaded ${cached.length} filter lists from cache`);
+            }
+          }
+        } catch { }
+
+        // Download fresh if no valid cache
+        if (!usedCache) {
+          const results = await Promise.allSettled(
+            FILTER_URLS.map(async (url) => {
+              const resp = await fetch(url);
+              if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+              return resp.text();
+            })
+          );
+          filterTexts = results
+            .filter((r) => r.status === 'fulfilled')
+            .map((r) => r.value);
+
+          // Save to cache
+          if (filterTexts.length > 0) {
+            await fsPromises.writeFile(cachePath, JSON.stringify(filterTexts)).catch(() => { });
+          }
+          console.log(`[OnyxShield] Downloaded ${filterTexts.length}/${FILTER_URLS.length} filter lists`);
+        }
+
+        if (filterTexts.length > 0) {
+          const total = rustShield.loadFilterLists(filterTexts);
+          console.log(`[OnyxShield] Brave engine loaded — ${total} total filter rules`);
+        }
+      } catch (err) {
+        console.error('[OnyxShield] Failed to load filter lists:', err.message);
+      }
+    }
+
     // Sync shieldEnabled with stored user preference
     if (store) {
       shieldEnabled = store.get('adBlock', true);
     }
 
-    // ── Unified Onyx Shield: Rust O(1) fast-path + Cliqz deep filter ──
-    // Electron only supports one onBeforeRequest handler per session, so we
-    // unify both engines into a single interceptor. The Rust HashSet provides
-    // instant domain-level blocking; Cliqz handles complex filter rules
-    // (cosmetic, exception lists, regex patterns) that the HashSet can't.
-    {
-      const webviewSession = session.fromPartition('persist:main');
-      const filter = { urls: ['http://*/*', 'https://*/*'] };
-
-      const unifiedHandler = (details, callback) => {
-        // If shield is disabled by user, pass everything through
-        if (!shieldEnabled) return callback({ cancel: false });
-
-        // Fast path: Rust HashSet O(1) domain check
-        if (rustShield && rustShield.shouldBlock(details.url)) {
-          blockedCount++;
-          if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('ad-blocked', blockedCount);
-          }
-          return callback({ cancel: true });
-        }
-
-        // Deep path: Cliqz EasyList/EasyPrivacy filter matching
-        if (blocker) {
-          const request = AdblockerRequest.fromRawDetails({
-            url: details.url,
-            type: details.resourceType || 'other',
-            sourceUrl: details.referrer || '',
-          });
-          const { match } = blocker.match(request);
-          if (match) {
-            blockedCount++;
-            if (mainWindow && !mainWindow.isDestroyed()) {
-              mainWindow.webContents.send('ad-blocked', blockedCount);
-            }
-            return callback({ cancel: true });
-          }
-        }
-
-        callback({ cancel: false });
-      };
-
-      webviewSession.webRequest.onBeforeRequest(filter, unifiedHandler);
-      session.defaultSession.webRequest.onBeforeRequest(filter, unifiedHandler);
-      console.log(`[OnyxShield] Unified interceptor active — Rust (${rustShield ? rustShield.domainCount() + ' domains' : 'unavailable'}) + Cliqz (${blocker ? 'loaded' : 'unavailable'})`);
-    }
+    console.log(`[OnyxShield] Background init complete — Brave (${rustShield ? rustShield.filterCount() + ' filters' : 'unavailable'}) + Cliqz (${blocker ? 'loaded' : 'unavailable'})`);
   })();
 });
 
