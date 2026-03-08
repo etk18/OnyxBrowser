@@ -11,6 +11,8 @@ coverage
 # Production
 dist
 release
+backend/build
+backend/dist
 
 # Runtime databases
 backend/chroma_db
