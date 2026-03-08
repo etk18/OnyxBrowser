@@ -8,9 +8,9 @@
     "build": "vite build",
     "postinstall": "electron-builder install-app-deps && chmod +x node_modules/app-builder-bin/mac/app-builder_arm64",
     "build:shield": "cd onyx-shield && npm install && npm run build && cd ..",
-    "build:win": "npm run build:shield && npm run build && electron-builder --win --x64 --publish always",
-    "build:mac": "npm run build:shield && npm run build && electron-builder --mac --arm64 --publish always",
-    "dist": "npm run build:shield && npm run build && electron-builder --mac --arm64 --publish always && electron-builder --win --x64 --publish always",
+    "build:win": "npm run build:shield && npm run build && electron-builder --win --x64 --publish never",
+    "build:mac": "npm run build:shield && npm run build && electron-builder --mac --arm64 --publish never",
+    "dist": "npm run build:shield && npm run build && electron-builder --mac --arm64 --publish never && electron-builder --win --x64 --publish never",
     "preview": "vite preview"
   },
   "author": "Eesh Sagar",
