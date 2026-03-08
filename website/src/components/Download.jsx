@@ -33,8 +33,8 @@ export default function Download() {
                     </div>
                     <h3>macOS</h3>
                     <p className="dl-arch">Apple Silicon (arm64)</p>
-                    <a href="https://github.com/etk18/OnyxBrowser/releases/download/v2.0.0/Onyx-Mac-arm64.dmg" className="btn btn-primary dl-btn">
-                        <DownloadIcon /> Download .dmg
+                    <a href="https://github.com/etk18/OnyxBrowser/releases/download/v2.0/Onyx-Mac-arm64.zip" className="btn btn-primary dl-btn">
+                        <DownloadIcon /> Download .zip
                     </a>
                     <span className="dl-size">~123 MB</span>
                 </motion.div>
@@ -46,7 +46,7 @@ export default function Download() {
                     </div>
                     <h3>Windows</h3>
                     <p className="dl-arch">x64 (64-bit)</p>
-                    <a href="https://github.com/etk18/OnyxBrowser/releases/download/v2.0.0/Onyx-Setup-2.0.0.exe" className="btn btn-primary dl-btn">
+                    <a href="https://github.com/etk18/OnyxBrowser/releases/download/v2.0/Onyx-Setup-2.0.0.exe" className="btn btn-primary dl-btn">
                         <DownloadIcon /> Download .exe
                     </a>
                     <span className="dl-size">~140 MB</span>
