@@ -13,11 +13,11 @@ function AboutModal({ onClose }) {
                         </svg>
                     </div>
                     <h1>ONYX</h1>
-                    <span className="version-badge">v0.1.0-beta</span>
+                    <span className="version-badge">v2.0.0</span>
                 </div>
 
                 <div className="about-body">
-                    <p className="tagline">The High-Performance Agentic Browser.</p>
+                    <p className="tagline">The Agentic Web Engine.</p>
                     <div className="credits">
                         <p>Designed & Engineered by Eesh</p>
                         <p>© 2026 Onyx Browser</p>

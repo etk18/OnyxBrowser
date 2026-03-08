@@ -21,7 +21,7 @@ export default function Navbar({ page }) {
                 <a href="#" className="nav-brand">
                     <img src="/icon.ico" alt="Onyx" />
                     <span>OnyxBrowser</span>
-                    <span className="nav-beta-badge">BETA</span>
+                    <span className="nav-beta-badge">v2.0</span>
                 </a>
                 <div className="nav-links">
                     {page === 'releases' ? (

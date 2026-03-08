@@ -1,7 +1,7 @@
 {
   "name": "onyx-browser",
-  "version": "0.1.0-beta",
-  "description": "The High-Performance Agentic Browser.",
+  "version": "2.0.0",
+  "description": "The Agentic Web Engine.",
   "main": "electron/main.js",
   "scripts": {
     "dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && ELECTRON_RUN_AS_NODE= electron .\"",
@@ -15,13 +15,20 @@
   },
   "author": "Eesh Sagar",
   "build": {
-    "appId": "com.eeshsagar.onyxbrowser",
-    "productName": "OnyxBrowser",
-    "executableName": "OnyxBrowser",
+    "appId": "com.eesh.onyx",
+    "productName": "Onyx",
+    "executableName": "Onyx",
+    "compression": "maximum",
     "asar": true,
+    "publish": [
+      {
+        "provider": "github",
+        "releaseType": "release"
+      }
+    ],
     "directories": {
       "output": "release",
-      "buildResources": "assets"
+      "buildResources": "build"
     },
     "files": [
       "dist/**/*",
@@ -47,22 +54,16 @@
     ],
     "extraResources": [
       {
-        "from": "backend",
-        "to": "backend",
+        "from": "backend/dist/onyx-brain",
+        "to": "onyx-brain",
         "filter": [
-          "**/*",
-          "!venv/**",
-          "!__pycache__/**",
-          "!.env",
-          "!.env.*",
-          "!*.db",
-          "!*.sqlite"
+          "**/*"
         ]
       }
     ],
     "win": {
-      "target": "nsis",
-      "icon": "assets/icon.ico",
+      "target": ["nsis"],
+      "icon": "build/icon.ico",
       "legalTrademarks": "Onyx AI"
     },
     "nsis": {
@@ -72,8 +73,8 @@
       "deleteAppDataOnUninstall": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "OnyxBrowser",
-      "uninstallDisplayName": "OnyxBrowser",
+      "shortcutName": "Onyx",
+      "uninstallDisplayName": "Onyx",
       "artifactName": "${productName}-Setup-${version}.${ext}"
     },
     "protocols": [
@@ -83,22 +84,22 @@
       }
     ],
     "mac": {
-      "target": "dmg",
-      "icon": "assets/icon.icns",
-      "artifactName": "OnyxBrowser-Mac-${arch}.dmg",
+      "target": ["dmg", "zip"],
+      "icon": "build/icon.icns",
+      "artifactName": "Onyx-Mac-${arch}.${ext}",
       "category": "public.app-category.productivity"
     },
     "dmg": {
-      "title": "${productName} ${version}",
-      "icon": "assets/icon.icns",
+      "title": "Install Onyx Browser",
+      "icon": "build/icon.icns",
       "contents": [
         {
           "x": 130,
-          "y": 220
+          "y": 150
         },
         {
           "x": 410,
-          "y": 220,
+          "y": 150,
           "type": "link",
           "path": "/Applications"
         }

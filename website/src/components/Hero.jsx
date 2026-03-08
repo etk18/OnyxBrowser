@@ -28,7 +28,7 @@ export default function Hero() {
         <section className="container hero" id="hero">
             <div className="hero-content">
                 <motion.div className="hero-badge" {...fadeUp(0)}>
-                    ⚡ Public Beta v0.1.0
+                    ⚡ Stable v2.0.0
                 </motion.div>
                 <motion.h1 className="hero-title" {...fadeUp(0.1)}>
                     The Agentic{' '}
@@ -41,7 +41,7 @@ export default function Hero() {
                 </motion.p>
                 <motion.div className="hero-buttons" {...fadeUp(0.3)}>
                     <a href="#download" className="btn btn-primary">
-                        <DownloadIcon /> Download Beta v0.1.0
+                        <DownloadIcon /> Download v2.0.0
                     </a>
                     <a
                         href="https://github.com/etk18/OnyxBrowser"

@@ -115,11 +115,11 @@ export default function HomePage({ onNavigate, isIncognito }) {
                 {!isIncognito && (
                     <button className="homepage-whatsnew" onClick={() => onNavigate('onyx://ledger')}>
                         <span className="homepage-whatsnew-dot" />
-                        What's New in v0.1.0
+                        What's New in v2.0.0
                     </button>
                 )}
                 <div style={{ marginTop: 8 }}>
-                    <span>{isIncognito ? 'Incognito Session | Data stays in RAM' : 'OnyxBrowser | Public Beta v0.1.0'}</span>
+                    <span>{isIncognito ? 'Incognito Session | Data stays in RAM' : 'Onyx | Stable v2.0.0'}</span>
                 </div>
             </div>
         </div>

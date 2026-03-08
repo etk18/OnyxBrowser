@@ -2,6 +2,64 @@ import { motion } from 'framer-motion'
 
 const RELEASES = [
     {
+        version: 'v2.0.0',
+        date: 'March 8, 2026',
+        tag: 'Stable',
+        highlights: [
+            'Onyx graduates to v2.0.0 Stable — a fully packaged Agentic Web Engine with an integrated AI Brain.',
+        ],
+        sections: [
+            {
+                title: 'Production Packaging',
+                items: [
+                    'PyInstaller-frozen FastAPI backend shipped as a single "onyx-brain" binary',
+                    'Electron spawns the backend process automatically on startup with stdout/stderr logging',
+                    'Zombie killer — app.on("will-quit") ensures the Python server never orphans',
+                    'electron-builder config: NSIS installer (Windows), DMG + ZIP (macOS), maximum compression, GitHub auto-publish',
+                    'extraResources packages the frozen binary into the OS installer\'s protected resources folder',
+                    'Programmatic Uvicorn entry point (run.py) with multiprocessing.freeze_support() for PyInstaller compatibility',
+                ],
+            },
+            {
+                title: 'AI Brain Integration',
+                items: [
+                    'API Key Settings Bridge — three-path sync: IPC handler on save, startup sync with retry loop, direct POST endpoint',
+                    'Sync uses Node native http module (not electron.net) for maximum reliability across platforms',
+                    'Backend environment hot-reloads API keys via os.environ + dotenv set_key() persistence',
+                    'Settings UI shows real-time "Backend synced" / "Backend sync failed" status indicators',
+                ],
+            },
+            {
+                title: 'Spatial DOM Execution',
+                items: [
+                    'LLM-powered /click command — describe elements in natural language ("Sign In button") instead of numeric IDs',
+                    'Agent matches user intent against the viewport DOM map using Groq (Llama 3.3 70B) or OpenAI (GPT-4o-mini)',
+                    'Automatic code fence stripping and JSON parsing with graceful error handling',
+                    'Falls back to direct numeric ID passthrough for explicit targeting',
+                ],
+            },
+            {
+                title: 'Semantic Memory Dashboard',
+                items: [
+                    'New onyx://memory internal page with Onyx Glass aesthetic — glass cards, hover glow, distance badges',
+                    'ChromaDB endpoints: GET /api/memory/all, POST /api/memory/search (semantic similarity), DELETE /api/memory/{doc_id}',
+                    'Accessible from AI Sidebar footer with dedicated Memory button',
+                    'Search form with real-time results, responsive grid layout, trash-delete per card',
+                ],
+            },
+            {
+                title: 'Stability & Bug Fixes (v2.0)',
+                items: [
+                    'Fixed React CSS shorthand warning — decomposed border shorthand into borderWidth/borderStyle/borderColor',
+                    'Fixed Omnibox double-navigation — moved e.preventDefault() to top of Enter handler before any branching',
+                    'Fixed electron.net.fetch startup failures — replaced with Node native http module',
+                    'Fixed SyntaxError from duplicate closing brace in click executor block',
+                    'Fixed Menu buildFromTemplate crash when running without Vite dev server',
+                ],
+            },
+        ],
+    },
+    {
         version: 'v0.1.0-beta',
         date: 'March 7, 2026',
         tag: 'Public Beta',
@@ -138,6 +196,18 @@ const RELEASES = [
 
 const BUGFIXES = [
     {
+        version: 'v2.0.0',
+        items: [
+            'React CSS shorthand/specific property conflict — MemoryDashboard card and searchWrap used border shorthand alongside borderColor, causing React warnings; decomposed to borderWidth + borderStyle + borderColor',
+            'Omnibox double-navigation on Enter — e.preventDefault() was only in slash/NL branches, not the URL else branch; moved to top of handler',
+            'electron.net.fetch failing with net::ERR_FAILED during startup sync — replaced with Node native http module for all main-process backend communication',
+            'SyntaxError: Missing catch or finally after try — duplicate closing brace in click executor block in main.js',
+            'TypeError: Menu.buildFromTemplate undefined — caused by running npx electron . without Vite dev server; documented npm run dev as required startup',
+            'API key sync not reaching backend — React renderer fetch to localhost:8000 unreliable from Electron; routed through IPC + Node http instead',
+            'Backend process orphaning on quit — added will-quit handler to kill spawned Python process',
+        ],
+    },
+    {
         version: 'v0.1.0-beta',
         items: [
             'Active tab recovery — if activeTabId becomes invalid after a close race condition, auto-resets to first available tab',
@@ -184,7 +254,7 @@ export default function ReleaseNotes() {
                     Release <span className="gradient-text">Notes</span>
                 </h2>
                 <p className="section-sub">
-                    Every feature and fix shipped in OnyxBrowser.
+                    Every feature and fix shipped in Onyx Browser.
                 </p>
             </motion.div>
 

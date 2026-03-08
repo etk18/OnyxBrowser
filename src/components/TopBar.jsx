@@ -43,8 +43,8 @@ function TopBar({
                         GHOST
                     </span>
                 ) : (
-                    <button className="topbar-beta-badge" onClick={() => onNavigate('onyx://ledger')} title="What's New in v0.1.0">
-                        BETA
+                    <button className="topbar-beta-badge" onClick={() => onNavigate('onyx://ledger')} title="What's New in v2.0.0">
+                        v2.0
                     </button>
                 )}
                 <button className="nav-btn" onClick={onBack} disabled={!canGoBack} title="Back">

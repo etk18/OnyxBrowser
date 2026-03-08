@@ -387,7 +387,7 @@ export default function AISidebar({ isOpen, onClose, currentWebContentsId, curre
                     </svg>
                     Memory
                 </button>
-                <span className="ai-sidebar-version-text">v0.1.0-beta</span>
+                <span className="ai-sidebar-version-text">v2.0.0</span>
             </div>
         </div>
     );

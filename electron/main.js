@@ -1,5 +1,6 @@
 const { app, BrowserWindow, WebContentsView, Menu, ipcMain, session, dialog } = require('electron');
 const path = require('path');
+const { spawn } = require('child_process');
 const { ElectronBlocker } = require('@cliqz/adblocker-electron');
 const { Request: AdblockerRequest } = require('@cliqz/adblocker');
 const fetch = require('cross-fetch');
@@ -29,6 +30,9 @@ try {
 } catch (e) {
   console.warn('[OnyxShield] Rust native module not available, falling back to Cliqz only:', e.message);
 }
+
+// ── Backend Process (FastAPI/Uvicorn) ──
+let backendProcess = null;
 
 // ── Application Menu: Enable system shortcuts (Cmd+C/V/X) ──
 // Without this, Electron strips all standard Edit shortcuts.
@@ -1648,6 +1652,32 @@ app.whenReady().then(async () => {
   // 1. Initialize Store (Fast, blocking to ensure data is ready)
   await initStore();
 
+  // 1a. Spawn FastAPI backend process
+  const isPackaged = app.isPackaged;
+  let backendPath;
+  if (isPackaged) {
+    const binaryName = process.platform === 'win32' ? 'onyx-brain.exe' : 'onyx-brain';
+    backendPath = path.join(process.resourcesPath, 'onyx-brain', binaryName);
+    backendProcess = spawn(backendPath, [], { stdio: ['ignore', 'pipe', 'pipe'] });
+  } else {
+    const pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
+    backendProcess = spawn(pythonCmd, [path.join(__dirname, '..', 'backend', 'run.py')], {
+      cwd: path.join(__dirname, '..', 'backend'),
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+  }
+
+  backendProcess.stdout.on('data', (data) => {
+    console.log(`[Backend] ${data.toString().trim()}`);
+  });
+  backendProcess.stderr.on('data', (data) => {
+    console.log(`[Backend:err] ${data.toString().trim()}`);
+  });
+  backendProcess.on('close', (code) => {
+    console.log(`[Backend] Process exited with code ${code}`);
+    backendProcess = null;
+  });
+
   // 2. Launch UI immediately
   createWindow();
 
@@ -2170,6 +2200,15 @@ app.whenReady().then(async () => {
 
     console.log(`[OnyxShield] Background init complete — Brave (${rustShield ? rustShield.filterCount() + ' filters' : 'unavailable'}) + Cliqz (${blocker ? 'loaded' : 'unavailable'})`);
   })();
+});
+
+// ── Zombie Killer: Ensure backend process dies when app quits ──
+app.on('will-quit', () => {
+  if (backendProcess) {
+    console.log('[Backend] Killing backend process...');
+    backendProcess.kill();
+    backendProcess = null;
+  }
 });
 
 app.on('window-all-closed', () => {

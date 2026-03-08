@@ -39,8 +39,8 @@ function NavigationBar({
             GHOST
           </span>
         ) : (
-          <button className="navbar-beta" onClick={onLedger} title="What's New in v0.1.0">
-            BETA
+          <button className="navbar-beta" onClick={onLedger} title="What's New in v2.0.0">
+            v2.0
           </button>
         )}
         <button className="nav-btn nav-btn-sm" onClick={onBack} disabled={!canGoBack} title="Back (⌘[)">

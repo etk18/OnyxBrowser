@@ -41,6 +41,7 @@ yarn-error.log*
 *.njsproj
 *.sln
 *.sw?
+.venv
 
 # OS generated files
 Thumbs.db

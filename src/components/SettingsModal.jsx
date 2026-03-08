@@ -257,7 +257,7 @@ export default function SettingsModal({ onClose }) {
                 </div>
 
                 {/* Footer: Save & Cancel */}
-                <div className="settings-version">OnyxBrowser | Public Beta v0.1.0</div>
+                <div className="settings-version">Onyx | Stable v2.0.0</div>
                 <div className="settings-footer">
                     <button className="settings-cancel-btn" onClick={onClose}>
                         Cancel

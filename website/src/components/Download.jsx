@@ -18,7 +18,7 @@ export default function Download() {
                 transition={{ duration: 0.6 }}
             >
                 <h2 className="section-title">
-                    Download <span className="gradient-text">OnyxBrowser</span>
+                    Download <span className="gradient-text">Onyx</span>
                 </h2>
                 <p className="section-sub">
                     Free to use. Source code on GitHub. Available for macOS and Windows.
@@ -33,7 +33,7 @@ export default function Download() {
                     </div>
                     <h3>macOS</h3>
                     <p className="dl-arch">Apple Silicon (arm64)</p>
-                    <a href="https://github.com/etk18/OnyxBrowser/releases/download/v0.1.0-beta/OnyxBrowser-Mac-arm64.dmg" className="btn btn-primary dl-btn">
+                    <a href="https://github.com/etk18/OnyxBrowser/releases/download/v2.0.0/Onyx-Mac-arm64.dmg" className="btn btn-primary dl-btn">
                         <DownloadIcon /> Download .dmg
                     </a>
                     <span className="dl-size">~123 MB</span>
@@ -46,7 +46,7 @@ export default function Download() {
                     </div>
                     <h3>Windows</h3>
                     <p className="dl-arch">x64 (64-bit)</p>
-                    <a href="https://github.com/etk18/OnyxBrowser/releases/download/v0.1.0-beta/OnyxBrowser-Setup-0.1.0-beta.exe" className="btn btn-primary dl-btn">
+                    <a href="https://github.com/etk18/OnyxBrowser/releases/download/v2.0.0/Onyx-Setup-2.0.0.exe" className="btn btn-primary dl-btn">
                         <DownloadIcon /> Download .exe
                     </a>
                     <span className="dl-size">~140 MB</span>
