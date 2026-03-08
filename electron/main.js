@@ -1652,31 +1652,49 @@ app.whenReady().then(async () => {
   // 1. Initialize Store (Fast, blocking to ensure data is ready)
   await initStore();
 
-  // 1a. Spawn FastAPI backend process
+  // 1a. Spawn FastAPI backend process (graceful degradation if missing)
   const isPackaged = app.isPackaged;
-  let backendPath;
   if (isPackaged) {
     const binaryName = process.platform === 'win32' ? 'onyx-brain.exe' : 'onyx-brain';
-    backendPath = path.join(process.resourcesPath, 'onyx-brain', binaryName);
-    backendProcess = spawn(backendPath, [], { stdio: ['ignore', 'pipe', 'pipe'] });
+    const backendPath = path.join(process.resourcesPath, 'onyx-brain', binaryName);
+    if (fs.existsSync(backendPath)) {
+      backendProcess = spawn(backendPath, [], { stdio: ['ignore', 'pipe', 'pipe'] });
+      backendProcess.on('error', (err) => {
+        console.log('[Backend] AI Backend failed to start:', err.message);
+      });
+    } else {
+      console.log('[Backend] AI Backend executable not found at:', backendPath);
+      console.log('[Backend] Onyx is starting in Browser-Only mode.');
+    }
   } else {
     const pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
-    backendProcess = spawn(pythonCmd, [path.join(__dirname, '..', 'backend', 'run.py')], {
-      cwd: path.join(__dirname, '..', 'backend'),
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
+    const scriptPath = path.join(__dirname, '..', 'backend', 'run.py');
+    if (fs.existsSync(scriptPath)) {
+      backendProcess = spawn(pythonCmd, [scriptPath], {
+        cwd: path.join(__dirname, '..', 'backend'),
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+      backendProcess.on('error', (err) => {
+        console.log('[Backend] AI Backend failed to start:', err.message);
+      });
+    } else {
+      console.log('[Backend] Backend script not found at:', scriptPath);
+      console.log('[Backend] Onyx is starting in Browser-Only mode.');
+    }
   }
 
-  backendProcess.stdout.on('data', (data) => {
-    console.log(`[Backend] ${data.toString().trim()}`);
-  });
-  backendProcess.stderr.on('data', (data) => {
-    console.log(`[Backend:err] ${data.toString().trim()}`);
-  });
-  backendProcess.on('close', (code) => {
-    console.log(`[Backend] Process exited with code ${code}`);
-    backendProcess = null;
-  });
+  if (backendProcess) {
+    backendProcess.stdout.on('data', (data) => {
+      console.log(`[Backend] ${data.toString().trim()}`);
+    });
+    backendProcess.stderr.on('data', (data) => {
+      console.log(`[Backend:err] ${data.toString().trim()}`);
+    });
+    backendProcess.on('close', (code) => {
+      console.log(`[Backend] Process exited with code ${code}`);
+      backendProcess = null;
+    });
+  }
 
   // 2. Launch UI immediately
   createWindow();
