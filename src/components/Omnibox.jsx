@@ -68,16 +68,15 @@ function Omnibox({ currentUrl, isLoading, onNavigate, onAgentCommand, blockedCou
 
     const handleKeyDown = (e) => {
         if (e.key === 'Enter') {
+            e.preventDefault();
             const raw = inputRef.current.value.trim();
             if (raw) {
                 if (raw.startsWith('/') && onAgentCommand) {
                     // Slash command — route to AI agent
-                    e.preventDefault();
                     onAgentCommand(raw);
                     inputRef.current.blur();
                 } else if (onAgentCommand && isNaturalLanguageCommand(raw)) {
                     // Natural language command — convert to /command and route to AI
-                    e.preventDefault();
                     onAgentCommand(toAgentCommand(raw));
                     inputRef.current.blur();
                 } else {
